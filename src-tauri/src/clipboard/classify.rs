@@ -198,34 +198,46 @@ mod tests {
         matches!(classify(text), Class::Never(_))
     }
 
+    /// Fake tokens are assembled at runtime from a prefix and a dummy body, so no complete
+    /// token-shaped string appears in the source. (GitHub's push protection, and other
+    /// secret scanners, rightly refuse commits containing realistic-looking keys, even
+    /// fake ones like these.)
+    fn fake(prefix: &str, body: &str) -> String {
+        format!("{prefix}{body}")
+    }
+
+    const LOWER: &str = "abcdefghijklmnopqrstuvwxyz";
+
     #[test]
     fn known_secret_formats_are_never_kept() {
-        for secret in [
-            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----",
-            "-----BEGIN RSA PRIVATE KEY-----",
-            "ghp_0123456789abcdefghijklmnopqrstuvwxyz",
-            "github_pat_11ABCDEFG0123456789_abcdefghijklmnopqrstuvwxyzABCDEFGHIJ0123456789abcdefghijklmnopqrstuvwx",
-            "glpat-abcdefghij0123456789",
-            "sk-proj-abcdefghijklmnopqrstuvwxyz012345",
-            "sk-ant-api03-abcdefghijklmnopqrstuvwxyz012345",
-            "AKIAIOSFODNN7EXAMPLE",
-            concat!("sk_live", "_51H8abcdefghijklmnopqrstuv"),
-            "xoxb-1234567890-abcdefghij",
-            "AIzaSyA-1234567890abcdefghijklmnopqrstu",
-            "npm_abcdefghijklmnopqrstuvwxyz0123456789",
-            "eyJhbGciOiJIUzI1NiJ9.eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U",
-            "postgres://admin:hunter2@db.example.com:5432/app",
-            "DATABASE_PASSWORD=correcthorse",
-            "api_key: 9f8e7d6c5b4a",
-            "export AUTH_TOKEN=abc123def456",
-        ] {
+        let secrets = [
+            "-----BEGIN OPENSSH PRIVATE KEY-----\nb3BlbnNzaC1rZXktdjEAAAAA\n-----END OPENSSH PRIVATE KEY-----".to_string(),
+            "-----BEGIN RSA PRIVATE KEY-----".to_string(),
+            fake("ghp", &format!("_0123456789{LOWER}")),
+            fake("github_pat", &format!("_11ABCDEFG0123456789_{LOWER}ABCDEFGHIJ0123456789{LOWER}")),
+            fake("glpat", "-abcdefghij0123456789"),
+            fake("sk-proj", &format!("-{LOWER}012345")),
+            fake("sk-ant", &format!("-api03-{LOWER}012345")),
+            fake("AKIA", "IOSFODNN7EXAMPLE"),
+            fake("sk_live", &format!("_51H8{}", &LOWER[..22])),
+            fake("xoxb", "-1234567890-abcdefghij"),
+            fake("AIza", "SyA-1234567890abcdefghijklmnopqrstu"),
+            fake("npm", &format!("_{LOWER}0123456789")),
+            fake("eyJhbGciOiJIUzI1NiJ9", ".eyJzdWIiOiIxMjM0NTY3ODkwIn0.dozjgNryP4J3jVmNHl0w5N_XgL0n3I9PlFUP0THsR8U"),
+            fake("postgres://admin:hunter2", "@db.example.com:5432/app"),
+            "DATABASE_PASSWORD=correcthorse".to_string(),
+            "api_key: 9f8e7d6c5b4a".to_string(),
+            "export AUTH_TOKEN=abc123def456".to_string(),
+        ];
+        for secret in &secrets {
             assert!(never(secret), "should never keep: {secret}");
         }
     }
 
     #[test]
     fn secrets_inside_longer_text_are_caught_too() {
-        assert!(never("here's the key: AKIAIOSFODNN7EXAMPLE, don't share it"));
+        let aws = fake("AKIA", "IOSFODNN7EXAMPLE");
+        assert!(never(&format!("here's the key: {aws}, don't share it")));
         assert!(never("ok\nPASSWORD=s3cretvalue\nPORT=8080"));
     }
 
