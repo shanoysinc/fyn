@@ -44,7 +44,7 @@
 - Light, dark, or follow Windows, for Fyn only. Your PC's theme isn't touched.
 - Welcome screen on first run.
 - Signed auto-updates.
-- Tray icon, launch at login, single instance, hides when it loses focus, opens on the monitor under your cursor, acrylic background.
+- Tray icon, launch at login (on by default; turning it off sticks), single instance, hides when it loses focus, opens on the monitor under your cursor, acrylic background.
 
 ## Keyboard shortcuts
 
@@ -93,6 +93,19 @@ bun run test          # frontend tests (not `bun test`, which is Bun's own runne
 cd src-tauri; cargo test; cargo clippy
 bun run app:build     # local release build + MSI / NSIS installers
 ```
+
+### Dev vs. installed builds
+
+`bun run app:dev` runs as **Fyn Dev** (`src-tauri/tauri.dev.conf.json`), a separate app identity from the installed **Fyn**:
+
+| | Installed Fyn | Fyn Dev |
+| --- | --- | --- |
+| Data (favorites, usage, settings) | `%LOCALAPPDATA%\dev.fyn.launcher` | `%LOCALAPPDATA%\dev.fyn.launcher.dev` |
+| Default shortcut | <kbd>Ctrl</kbd>+<kbd>Space</kbd> | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> |
+| Launch at login | On by default | Never registered |
+| Tray name | Fyn | Fyn Dev |
+
+So both can run side by side, and nothing you do in dev touches your everyday favorites.
 
 ### Developer menu
 

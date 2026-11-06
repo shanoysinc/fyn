@@ -11,7 +11,7 @@
     "test:watch": "vitest",
     "test:all": "vitest run && cd src-tauri && cargo test",
     "tauri": "tauri",
-    "app:dev": "tauri dev",
+    "app:dev": "tauri dev --config src-tauri/tauri.dev.conf.json",
     "app:build": "tauri build"
   },
   "dependencies": {

@@ -63,6 +63,7 @@ fn main() {
             window::apply_theme(&handle, &theme);
             state::refresh(&handle);
             watcher::start(&handle);
+            commands::enable_autostart_by_default(&handle);
             updater::check_in_background(&handle);
 
             // Show the launcher on a manual start so the user knows it's running, once the

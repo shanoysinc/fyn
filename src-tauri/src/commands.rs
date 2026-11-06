@@ -7,7 +7,7 @@
 use std::collections::HashSet;
 
 use serde::Serialize;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 use tauri_plugin_autostart::ManagerExt;
 
 use crate::indexer::{App, AppKind};
@@ -21,6 +21,8 @@ use crate::{hotkey, launcher, window};
 pub const SETTING_ONBOARDED: &str = "onboarded";
 pub const SETTING_SEARCH_ENGINE: &str = "search_engine";
 pub const SETTING_THEME: &str = "theme";
+/// Set once launch-at-login has been switched on by default, so a later "off" sticks.
+const SETTING_AUTOSTART_DEFAULTED: &str = "autostart_defaulted";
 const SEARCH_ENGINES: [&str; 3] = ["google", "duckduckgo", "bing"];
 const THEMES: [&str; 3] = ["system", "light", "dark"];
 
@@ -289,6 +291,34 @@ pub fn suspend_hotkey(app: AppHandle, state: State<AppState>, suspended: bool) -
     hotkey::suspend(&app, &state, suspended)
 }
 
+/// Launch at login is on by default: switch it on once, the first time an installed
+/// (release) build runs. After that the user's choice in Settings is never overridden.
+/// Dev builds skip this so `target\debug\fyn.exe` never gets registered to start at login.
+pub fn enable_autostart_by_default(app: &AppHandle) {
+    if cfg!(debug_assertions) {
+        return;
+    }
+    let state = app.state::<AppState>();
+    let store = state.store.lock().unwrap();
+    if !should_default_autostart(&store) {
+        return;
+    }
+    match app.autolaunch().enable() {
+        Ok(()) => {
+            if let Err(e) = store.set_setting(SETTING_AUTOSTART_DEFAULTED, "1") {
+                eprintln!("[fyn] failed to save autostart default: {e}");
+            }
+        }
+        // Not recorded, so it's tried again on the next start.
+        Err(e) => eprintln!("[fyn] couldn't enable launch at login: {e}"),
+    }
+}
+
+/// True until the launch-at-login default has been applied once.
+fn should_default_autostart(store: &Store) -> bool {
+    store.get_setting(SETTING_AUTOSTART_DEFAULTED).is_none()
+}
+
 #[tauri::command]
 pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
     let launcher = app.autolaunch();
@@ -370,6 +400,14 @@ mod tests {
 
     fn store() -> Store {
         Store::open(Path::new(":memory:")).unwrap()
+    }
+
+    #[test]
+    fn autostart_is_defaulted_only_once() {
+        let s = store();
+        assert!(should_default_autostart(&s), "fresh install: turn it on");
+        s.set_setting(SETTING_AUTOSTART_DEFAULTED, "1").unwrap();
+        assert!(!should_default_autostart(&s), "afterwards the user's choice wins");
     }
 
     #[test]
