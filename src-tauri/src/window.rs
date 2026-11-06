@@ -1,12 +1,18 @@
 //! Launcher window behaviour: show on the active monitor, hide on blur, toggle.
 
-use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, WebviewWindow, WindowEvent};
+use std::sync::atomic::{AtomicBool, Ordering};
+
+use tauri::{AppHandle, Emitter, Manager, PhysicalPosition, Theme, WebviewWindow, WindowEvent};
 
 use crate::state::{self, AppState};
 
 pub const EVT_SHOWN: &str = "fyn://shown";
 pub const EVT_HIDDEN: &str = "fyn://hidden";
 pub const EVT_OPEN_SETTINGS: &str = "fyn://open-settings";
+
+/// Set while the colour picker's eyedropper is open, so picking a pixel elsewhere on
+/// screen doesn't hide the launcher.
+static AUTO_HIDE_SUSPENDED: AtomicBool = AtomicBool::new(false);
 
 fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
@@ -17,13 +23,33 @@ pub fn install(app: &AppHandle) {
     let handle = app.clone();
     win.on_window_event(move |event| {
         if let WindowEvent::Focused(false) = event {
-            hide(&handle);
+            if !AUTO_HIDE_SUSPENDED.load(Ordering::SeqCst) {
+                hide(&handle);
+            }
         }
     });
 }
 
+/// Fyn's own light/dark appearance ("system" follows Windows). Sets the native window
+/// theme so the acrylic backdrop matches; the UI applies its colours from the setting too.
+pub fn apply_theme(app: &AppHandle, theme: &str) {
+    let Some(win) = main_window(app) else { return };
+    let theme = match theme {
+        "light" => Some(Theme::Light),
+        "dark" => Some(Theme::Dark),
+        _ => None,
+    };
+    let _ = win.set_theme(theme);
+}
+
+pub fn suspend_auto_hide(suspended: bool) {
+    AUTO_HIDE_SUSPENDED.store(suspended, Ordering::SeqCst);
+}
+
 pub fn show(app: &AppHandle) {
     let Some(win) = main_window(app) else { return };
+    // Never get stuck in "don't hide" if the UI forgot to switch it back.
+    suspend_auto_hide(false);
     position_on_active_monitor(app, &win);
     let _ = win.show();
     let _ = win.unminimize();

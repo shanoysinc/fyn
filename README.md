@@ -1,106 +1,198 @@
-# Fyn
+<p align="center">
+  <img src="src/assets/logo.png" width="96" height="96" alt="Fyn logo" />
+</p>
 
-A fast, keyboard-first launcher for Windows 11 (in the spirit of Raycast), built with Tauri v2 + Rust + React.
+<h1 align="center">Fyn</h1>
 
-Press **Ctrl+Space** anywhere → type → **Enter**.
+<p align="center">
+  A fast, keyboard-first launcher for Windows 11.<br />
+  Press <kbd>Ctrl</kbd>+<kbd>Space</kbd>, type a few letters, press <kbd>Enter</kbd>.
+</p>
 
-## Features (MVP)
+<p align="center">
+  Built with <a href="https://tauri.app">Tauri 2</a>, Rust and React. Small, offline-first, no telemetry.
+</p>
 
-- **Finds every app** – Start Menu shortcuts (`.lnk`, plus non-web `.url` like Steam games) and Store/MSIX apps from `shell:AppsFolder`.
-- **Fuzzy search** in Rust ([nucleo](https://github.com/helix-editor/nucleo)) – `vsc` → Visual Studio Code, matched letters highlighted.
-- **Smart ranking** – match quality + prefix bonus + frecency (how often / how recently you launch it).
-- **Favorites** – pin apps, reorder them, open them with `Ctrl+1…9`.
-- **Suggestions** – your most-used apps on the home screen.
-- **Configurable global shortcut** – default `Ctrl+Space`, changed in Settings, swapped atomically (if the new one is taken, the old one stays).
-- Tray icon, launch at login, single instance, hides on blur, opens on the monitor under your cursor, light/dark theme, acrylic background.
+---
 
-### Keyboard
+## Features
+
+### Apps
+- **Finds every app**: Start Menu shortcuts (`.lnk`, plus non-web `.url` such as Steam games) and Store/MSIX apps.
+- **Fuzzy search in Rust** ([nucleo](https://github.com/helix-editor/nucleo)): `vsc` finds Visual Studio Code, with the matched letters highlighted.
+- **Smart ranking**: match quality, prefix bonus and *frecency* (how often and how recently you open something).
+- **Favorites**: pin apps, reorder them, and open them with <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd>.
+- **Suggestions**: your most-used apps on the home screen.
+- Run as administrator, show in File Explorer, copy path.
+
+### Built-in tools
+| Type… | You get |
+| --- | --- |
+| `24*1.15`, `15% of 80`, `sqrt(2)` | **Calculator**: the answer appears instantly; <kbd>Enter</kbd> copies it |
+| `g rust`, `yt lofi`, `gh tauri`, `w turing`, `ddg`, `b`, `npm`, `maps` | **Search a site directly** |
+| anything | **Web search fallback** with your default engine (Google, DuckDuckGo or Bing) |
+| `github.com`, `localhost:3000` | **Open the website** |
+| `C:\Users`, `~\Downloads`, `%APPDATA%` | **Open the folder or file** (<kbd>Ctrl</kbd>+<kbd>Enter</kbd> shows it in Explorer) |
+| `wifi`, `bluetooth`, `display`, `sound`… | **Windows Settings pages** (35+) |
+| `lock`, `sleep`, `restart`, `shut down`, `sign out` | **System commands** (restart, shut down and sign out ask you to confirm) |
+| `empty recycle bin`, `toggle windows dark mode` | **More system commands** |
+| `emoji` | **Emoji picker** with search and recently used |
+| `#7c3aed`, `rgb(…)`, `color` | **Color picker**: convert between HEX, RGB and HSL, or pick a color from anywhere on screen |
+
+### Everything else
+- Configurable global shortcut (if the new one is taken, the old one keeps working).
+- Light, dark, or follow Windows, for Fyn only. Your PC's theme isn't touched.
+- Welcome screen on first run.
+- Signed auto-updates.
+- Tray icon, launch at login, single instance, hides when it loses focus, opens on the monitor under your cursor, acrylic background.
+
+## Keyboard shortcuts
 
 | Keys | Action |
 | --- | --- |
-| `Ctrl+Space` | Show / hide Fyn (configurable) |
-| `↑` `↓` / `Enter` | Move / open |
-| `Ctrl+K` | Actions menu |
-| `Ctrl+Enter` | Show in File Explorer |
-| `Ctrl+Shift+Enter` | Run as administrator |
-| `Ctrl+Shift+P` | Add / remove favorite |
-| `Ctrl+Shift+↑` `↓` | Reorder favorite |
-| `Ctrl+Shift+C` | Copy path |
-| `Ctrl+1…9` | Open favorite N |
-| `Ctrl+,` | Settings |
-| `Esc` | Clear search, then hide |
+| <kbd>Ctrl</kbd>+<kbd>Space</kbd> | Show / hide Fyn (configurable) |
+| <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>Enter</kbd> | Move / run |
+| <kbd>Ctrl</kbd>+<kbd>K</kbd> | All actions for the selected item |
+| <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Show in File Explorer |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Enter</kbd> | Run as administrator |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> | Add / remove favorite |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>↑</kbd> <kbd>↓</kbd> | Reorder favorite |
+| <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> | Copy path / URL |
+| <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> | Open favorite N |
+| <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> (color picker) | Pick a color from the screen |
+| <kbd>Esc</kbd> | Clear search, go back, then hide |
+
+## Install
+
+Download the latest `.msi` or `-setup.exe` from the [Releases](../../releases) page and run it. Fyn starts in the tray. Press <kbd>Ctrl</kbd>+<kbd>Space</kbd> to open it.
+
+Installed copies update themselves: Fyn checks for a new version shortly after it starts. You can also check from **Settings → Updates**.
 
 ## Development
 
 ### Prerequisites (one-time)
 
-1. **Visual Studio Build Tools** with the **"Desktop development with C++"** workload, which must include a **Windows 11 SDK**.
+1. **Visual Studio Build Tools** with the **Desktop development with C++** workload, including a **Windows 11 SDK**:
    ```powershell
    winget install Microsoft.WindowsSDK.10.0.26100
    ```
-   (or Visual Studio Installer → Modify → Individual components → *Windows 11 SDK*).
-2. Rust – the exact toolchain is pinned in `rust-toolchain.toml` and installed automatically by rustup.
-3. Node 20+.
-4. WebView2 – preinstalled on Windows 11.
+2. **Rust**: the exact toolchain is pinned in `rust-toolchain.toml` and installed automatically by rustup.
+3. **Node 20+**.
+4. **WebView2**: preinstalled on Windows 11.
 
-> **Git Bash users:** Git's `/usr/bin/link` shadows MSVC's `link.exe`. Run cargo/tauri from PowerShell or a *Developer PowerShell for VS*.
+> **Git Bash users:** if a build fails at the link step, Git's `/usr/bin/link` is shadowing MSVC's `link.exe`. Run the commands from PowerShell or a *Developer PowerShell for VS*.
 
 ### Commands
 
 ```powershell
 npm install
-npm run app:dev     # run with hot reload
-npm run app:build   # release build + MSI / NSIS installers in src-tauri/target/release/bundle
+npm run app:dev       # run with hot reload
+npm run typecheck     # TypeScript
+cd src-tauri; cargo test; cargo clippy
+npm run app:build     # local release build + MSI / NSIS installers
 ```
+
+### Developer menu
+
+In dev builds, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> (or click **DEV** in the footer) to jump straight to any screen or state: the welcome screen, settings, emoji and color pickers, a simulated "update available" notice, success and error toasts, resetting onboarding, and reloading the UI. The menu isn't included in release builds.
+
+### Releasing (with auto-update)
+
+Updates are signed. The updater's public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`), and the matching private key must stay secret.
+
+1. Bump `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`.
+2. Build with the signing key available:
+   ```powershell
+   $env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\fyn.key"
+   $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+   npx tauri build --config src-tauri/tauri.release.conf.json
+   ```
+   This also produces the `.sig` signature files next to the installers in `src-tauri/target/release/bundle`.
+3. Create a GitHub release and upload the installers, their `.sig` files and a `latest.json`:
+   ```json
+   {
+     "version": "0.2.0",
+     "notes": "What changed",
+     "pub_date": "2026-11-05T00:00:00Z",
+     "platforms": {
+       "windows-x86_64": {
+         "signature": "<contents of the -setup.exe.sig file>",
+         "url": "https://github.com/OWNER/fyn/releases/download/v0.2.0/Fyn_0.2.0_x64-setup.exe"
+       }
+     }
+   }
+   ```
+   `plugins.updater.endpoints` points at `releases/latest/download/latest.json`, so the newest release is always the one Fyn checks.
 
 ## Architecture
 
 ```
 src-tauri/src/
   main.rs         wiring: plugins, setup, command registration
+  commands.rs     IPC surface (every input validated)
   indexer/        app discovery
     shortcuts.rs    Start Menu .lnk/.url (IShellLinkW)
     packaged.rs     Store apps via shell:AppsFolder
     cache.rs        apps.json snapshot for instant startup
-  icons.rs        IShellItemImageFactory → PNG cache (parallel, 4 workers)
   search.rs       nucleo fuzzy match + ranking
+  system.rs       system commands, Settings pages, URLs and paths
+  launcher.rs     ShellExecute open / runas, reveal in Explorer
+  updater.rs      update check / install (tauri-plugin-updater)
+  icons.rs        IShellItemImageFactory → PNG cache (4 parallel workers)
   store.rs        SQLite (WAL): pins, usage, settings
   state.rs        shared state + background re-index pipeline
   watcher.rs      Start Menu file watcher (debounced)
-  launcher.rs     ShellExecute open / runas, reveal in Explorer
   hotkey.rs       global shortcut register / swap / suspend
-  window.rs       show on active monitor, hide on blur
+  window.rs       show on active monitor, hide on blur, theme
   tray.rs         tray menu
-  commands.rs     IPC surface (validated)
 src/
-  App.tsx         launcher view (cmdk)
-  components/     ActionPanel, SettingsView, AppIcon, Kbd
-  lib/            typed IPC, actions, shortcut formatting
+  App.tsx         launcher view (cmdk) + dev menu
+  components/     Settings, Welcome, Emoji, Color, ActionPanel, icons
+  lib/
+    entries.ts      built-in commands, Settings pages, web search, URL/path detection
+    calc.ts         calculator (a small parser, no eval)
+    color.ts        color parsing and conversion
+    fuzzy.ts        matcher for built-in commands
+    ipc.ts          typed IPC
 ```
 
 ### Performance
 
-- **Instant open** – the window is created once and only shown/hidden. Nothing is scanned on open.
-- **Instant startup** – the last catalogue is loaded from `apps.json`. A fresh scan runs on a background thread and pushes updates to the UI when it finishes.
-- **Icons extracted once** – rendered by 4 parallel workers, cached as PNG files named by a hash of app ID + shortcut timestamp, and loaded lazily by the UI.
-- **Search in Rust** – nucleo matches a few hundred apps in well under 1 ms. The UI drops stale responses so fast typing never flickers.
-- **Small release binary** – LTO, `codegen-units=1`, `panic=abort`, stripped.
-- **Index stays current** – a debounced file watcher picks up installs and uninstalls, and an out-of-date index (older than 10 minutes) is refreshed in the background on open.
+- **Instant open**: the window is created once and only shown/hidden. Nothing is scanned on open.
+- **Instant startup**: the last catalogue loads from `apps.json`; a fresh scan runs on a background thread.
+- **Icons extracted once**: 4 parallel workers, cached as PNGs keyed by a hash of app id + shortcut timestamp, loaded lazily.
+- **Search in Rust**: nucleo matches a few hundred apps in well under 1 ms; stale responses are dropped so fast typing never flickers.
+- **Lazy extras**: the emoji data (~450 KB) only loads when the emoji picker opens.
+- **Small release binary**: LTO, `codegen-units=1`, `panic=abort`, stripped.
 
 ### Security
 
-- **Least-privilege IPC.** The webview only has permission to `listen`/`unlisten` to events (`capabilities/default.json`). It gets no file system, shell or HTTP access, and cannot control windows.
-- **No paths or command lines from the UI.** Commands accept only an app **id**, and the backend looks it up in the catalogue it built itself. Anything unknown is rejected. The UI therefore cannot ask the backend to run an arbitrary program, even if the page were compromised.
-- **Input limits.** Queries are capped at 256 characters, ids at 2 KB and shortcuts at 64 characters. Shortcuts must include a modifier, so a bare key can't capture normal typing.
-- **No shell interpolation.** Apps are launched with `ShellExecuteW` on the indexed shortcut. Explorer gets a single quoted absolute path, and paths containing a quote are rejected. SQL is parameterised.
-- **Strict CSP.** Scripts load only from `'self'`, with no `eval` and no remote content. The asset protocol can read only the `$APPLOCALDATA/icons/**` folder.
-- **Run as administrator** always goes through the Windows UAC prompt. Fyn never runs elevated itself.
-- **Fully offline.** Fyn makes no network requests.
-- **Atomic writes.** The cache and icons are written to a temp file and renamed, so a crash can't corrupt them.
-- **Release hardening.** No dev tools, no context menu, reload disabled.
+- **Least-privilege IPC.** The webview may only `listen`/`unlisten` to events (`capabilities/default.json`). It gets no file system, shell or HTTP access. Everything goes through Fyn's own validated commands.
+- **Apps by id only.** Launching an app takes an opaque id that the backend looks up in the catalogue it built itself, so the UI can't ask for an arbitrary program to run.
+- **Everything else is validated in Rust:**
+  - System commands are a fixed list.
+  - Settings links must match `ms-settings:[a-z0-9-]`.
+  - URLs must be `http(s)` with no spaces or quotes.
+  - Typed paths must be absolute and exist.
+  - The theme and search engine must be one of the known values.
+- **Input limits.** Queries are capped at 256 characters, ids at 2 KB, URLs at 2 KB and paths at 1 KB. Shortcuts must include a modifier.
+- **No shell interpolation.** Apps and paths open with `ShellExecuteW`; Explorer gets a single quoted absolute path and rejects quotes; SQL is parameterised.
+- **Strict CSP.** No `eval`, no remote content. The asset protocol can read only `$APPLOCALDATA/icons/**`.
+- **Run as administrator** always goes through UAC. Fyn never runs elevated itself.
+- **Network use is limited to the update check.** Updates are verified against the bundled public key before they install.
+- **Release hardening.** No dev tools, no context menu, reload disabled, no dev menu.
 
 ## Roadmap
 
-1. **Next:** inline calculator / unit conversion, system commands (lock, sleep, restart, empty recycle bin), Windows Settings pages, quicklinks & web search (`g query`).
-2. **Then:** clipboard history, file search (Everything SDK), window switcher, snippets, aliases / per-app shortcuts.
-3. **Later:** extension API, auto-update (`tauri-plugin-updater`, signed), code-signed installer.
+- Unit and currency conversion in the calculator (`5 km in mi`)
+- Clipboard history
+- File search (Everything SDK / Windows Search)
+- Window switcher
+- Snippets and aliases
+- Pin built-in commands and Settings pages to Favorites
+- Extension API
+
+## Credits
+
+Emoji data from [unicode-emoji-json](https://github.com/muan/unicode-emoji-json) and [emojilib](https://github.com/muan/emojilib). The settings icon comes from [Lucide](https://lucide.dev) (ISC licence).

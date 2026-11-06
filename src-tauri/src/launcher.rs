@@ -1,4 +1,4 @@
-//! Launching apps and revealing them in Explorer.
+//! Launching apps, URLs and paths, and revealing them in Explorer.
 
 use std::os::windows::process::CommandExt;
 use std::path::Path;
@@ -10,12 +10,9 @@ use windows::Win32::UI::WindowsAndMessaging::{AllowSetForegroundWindow, ASFW_ANY
 use crate::indexer::{App, AppKind};
 use crate::win::wide;
 
-pub fn launch(app: &App, as_admin: bool) -> Result<(), String> {
-    if as_admin && app.kind == AppKind::Store {
-        return Err("Store apps can't be run as administrator".into());
-    }
-    let verb = if as_admin { w!("runas") } else { w!("open") };
-    let file = wide(&app.launch);
+/// ShellExecute `target` with `verb`. Returns the raw error code on failure.
+fn shell_execute(verb: PCWSTR, target: &str) -> Result<(), isize> {
+    let file = wide(target);
     unsafe {
         // Let the launched process take the foreground even though we're about to hide.
         let _ = AllowSetForegroundWindow(ASFW_ANY);
@@ -28,12 +25,27 @@ pub fn launch(app: &App, as_admin: bool) -> Result<(), String> {
             SW_SHOWNORMAL,
         );
         // ShellExecute returns a value > 32 on success.
-        if result.0 as isize > 32 {
+        let code = result.0 as isize;
+        if code > 32 {
             Ok(())
         } else {
-            Err(format!("Couldn't open {} (code {})", app.name, result.0 as isize))
+            Err(code)
         }
     }
+}
+
+pub fn launch(app: &App, as_admin: bool) -> Result<(), String> {
+    if as_admin && app.kind == AppKind::Store {
+        return Err("Store apps can't be run as administrator".into());
+    }
+    let verb = if as_admin { w!("runas") } else { w!("open") };
+    shell_execute(verb, &app.launch).map_err(|code| format!("Couldn't open {} (code {code})", app.name))
+}
+
+/// Open a URL, ms-settings: link, file or folder with its default handler.
+/// Callers must validate `target` first.
+pub fn shell_open(target: &str) -> Result<(), String> {
+    shell_execute(w!("open"), target).map_err(|code| format!("Couldn't open {target} (code {code})"))
 }
 
 pub fn reveal(app: &App) -> Result<(), String> {
@@ -50,7 +62,12 @@ pub fn reveal(app: &App) -> Result<(), String> {
         .as_deref()
         .filter(|t| Path::new(t).exists())
         .unwrap_or(&app.launch);
-    // Paths come from the indexer, but never let one break out of the quoted argument.
+    reveal_path(target)
+}
+
+/// Select `target` in a new Explorer window.
+pub fn reveal_path(target: &str) -> Result<(), String> {
+    // Never let a path break out of the quoted argument.
     if target.contains('"') || !Path::new(target).is_absolute() {
         return Err("Invalid path".into());
     }

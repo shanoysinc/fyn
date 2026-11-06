@@ -20,13 +20,39 @@ export interface Home {
   applications: Item[];
 }
 
+export type SearchEngine = "google" | "duckduckgo" | "bing";
+export type Theme = "system" | "light" | "dark";
+
 export interface Settings {
   hotkey: string;
   hotkeyError: string | null;
   autostart: boolean;
   appCount: number;
   version: string;
+  onboarded: boolean;
+  searchEngine: SearchEngine;
+  theme: Theme;
 }
+
+export interface PathInfo {
+  path: string;
+  isDir: boolean;
+}
+
+export interface UpdateInfo {
+  version: string;
+  currentVersion: string;
+  notes: string | null;
+}
+
+export type SystemCommandId =
+  | "lock"
+  | "sleep"
+  | "restart"
+  | "shutdown"
+  | "signout"
+  | "empty-recycle-bin"
+  | "toggle-dark-mode";
 
 export const api = {
   getHome: () => invoke<Home>("get_home"),
@@ -41,6 +67,18 @@ export const api = {
   suspendHotkey: (suspended: boolean) => invoke<void>("suspend_hotkey", { suspended }),
   setAutostart: (enabled: boolean) => invoke<void>("set_autostart", { enabled }),
   rescan: () => invoke<void>("rescan"),
+  setOnboarded: (done: boolean) => invoke<void>("set_onboarded", { done }),
+  setSearchEngine: (engine: SearchEngine) => invoke<void>("set_search_engine", { engine }),
+  setTheme: (theme: Theme) => invoke<void>("set_theme", { theme }),
+  /** Resolves to a message to show the user, if any. */
+  runSystemCommand: (command: SystemCommandId) => invoke<string | null>("run_system_command", { command }),
+  openSettingsPage: (uri: string) => invoke<void>("open_settings_page", { uri }),
+  openUrl: (url: string) => invoke<void>("open_url", { url }),
+  checkPath: (path: string) => invoke<PathInfo | null>("check_path", { path }),
+  openPath: (path: string, reveal = false) => invoke<void>("open_path", { path, reveal }),
+  suspendAutoHide: (suspended: boolean) => invoke<void>("suspend_auto_hide", { suspended }),
+  checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),
+  installUpdate: () => invoke<void>("install_update"),
 };
 
 export const events = {
@@ -48,12 +86,13 @@ export const events = {
   hidden: "fyn://hidden",
   appsChanged: "fyn://apps-changed",
   openSettings: "fyn://open-settings",
+  updateAvailable: "fyn://update-available",
 } as const;
 
-export function on(event: string, handler: () => void): () => void {
+export function on<T = unknown>(event: string, handler: (payload: T) => void): () => void {
   let unlisten: UnlistenFn | undefined;
   let disposed = false;
-  listen(event, handler).then((fn) => {
+  listen<T>(event, (e) => handler(e.payload)).then((fn) => {
     if (disposed) fn();
     else unlisten = fn;
   });
@@ -71,6 +110,17 @@ export function iconUrl(path: string): string {
     iconCache.set(path, url);
   }
   return url;
+}
+
+/** Apply Fyn's own appearance to the page. "system" follows Windows via prefers-color-scheme. */
+export function applyTheme(theme: Theme): void {
+  const root = document.documentElement;
+  if (theme === "system") delete root.dataset.theme;
+  else root.dataset.theme = theme;
+}
+
+export async function copyText(text: string): Promise<void> {
+  await navigator.clipboard.writeText(text);
 }
 
 export function errorMessage(e: unknown): string {

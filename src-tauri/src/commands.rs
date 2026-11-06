@@ -13,8 +13,16 @@ use tauri_plugin_autostart::ManagerExt;
 use crate::indexer::{App, AppKind};
 use crate::search::{self, frecency};
 use crate::state::{self, AppState};
-use crate::store::now;
+use crate::store::{now, Store};
+use crate::system::{self, PathInfo, SystemCommand};
+use crate::updater::{self, UpdateInfo};
 use crate::{hotkey, launcher, window};
+
+pub const SETTING_ONBOARDED: &str = "onboarded";
+pub const SETTING_SEARCH_ENGINE: &str = "search_engine";
+pub const SETTING_THEME: &str = "theme";
+const SEARCH_ENGINES: [&str; 3] = ["google", "duckduckgo", "bing"];
+const THEMES: [&str; 3] = ["system", "light", "dark"];
 
 const MAX_QUERY_LEN: usize = 256;
 const MAX_ID_LEN: usize = 2048;
@@ -64,6 +72,10 @@ pub struct Settings {
     autostart: bool,
     app_count: usize,
     version: String,
+    onboarded: bool,
+    search_engine: String,
+    /// Fyn's own appearance: "system", "light" or "dark". Never changes the Windows theme.
+    theme: String,
 }
 
 fn check_id(id: &str) -> Result<(), String> {
@@ -191,13 +203,74 @@ pub fn hide_window(app: AppHandle) {
 
 #[tauri::command]
 pub fn get_settings(app: AppHandle, state: State<AppState>) -> Settings {
+    let (onboarded, search_engine, theme) = {
+        let store = state.store.lock().unwrap();
+        (
+            store.get_setting(SETTING_ONBOARDED).as_deref() == Some("1"),
+            store
+                .get_setting(SETTING_SEARCH_ENGINE)
+                .filter(|e| SEARCH_ENGINES.contains(&e.as_str()))
+                .unwrap_or_else(|| SEARCH_ENGINES[0].to_string()),
+            saved_theme(&store),
+        )
+    };
     Settings {
         hotkey: state.hotkey.lock().unwrap().clone(),
         hotkey_error: state.hotkey_error.lock().unwrap().clone(),
         autostart: app.autolaunch().is_enabled().unwrap_or(false),
         app_count: state.apps().len(),
         version: app.package_info().version.to_string(),
+        onboarded,
+        search_engine,
+        theme,
     }
+}
+
+/// Fyn's saved appearance ("system" if unset or unknown).
+pub fn saved_theme(store: &Store) -> String {
+    store
+        .get_setting(SETTING_THEME)
+        .filter(|t| THEMES.contains(&t.as_str()))
+        .unwrap_or_else(|| THEMES[0].to_string())
+}
+
+/// Change Fyn's own light/dark appearance. Only affects Fyn's window.
+#[tauri::command]
+pub fn set_theme(app: AppHandle, state: State<AppState>, theme: String) -> Result<(), String> {
+    if !THEMES.contains(&theme.as_str()) {
+        return Err("Unknown theme".into());
+    }
+    state
+        .store
+        .lock()
+        .unwrap()
+        .set_setting(SETTING_THEME, &theme)
+        .map_err(|e| e.to_string())?;
+    window::apply_theme(&app, &theme);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn set_onboarded(state: State<AppState>, done: bool) -> Result<(), String> {
+    state
+        .store
+        .lock()
+        .unwrap()
+        .set_setting(SETTING_ONBOARDED, if done { "1" } else { "0" })
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_search_engine(state: State<AppState>, engine: String) -> Result<(), String> {
+    if !SEARCH_ENGINES.contains(&engine.as_str()) {
+        return Err("Unknown search engine".into());
+    }
+    state
+        .store
+        .lock()
+        .unwrap()
+        .set_setting(SETTING_SEARCH_ENGINE, &engine)
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -221,4 +294,60 @@ pub fn set_autostart(app: AppHandle, enabled: bool) -> Result<(), String> {
 #[tauri::command]
 pub fn rescan(app: AppHandle) {
     state::refresh(&app);
+}
+
+// ---------- built-in commands ----------
+
+/// Runs off the main thread: some commands (theme broadcast, Recycle Bin) can take a moment.
+#[tauri::command(async)]
+pub fn run_system_command(app: AppHandle, command: String) -> Result<Option<String>, String> {
+    let cmd = SystemCommand::parse(&command).ok_or("Unknown command")?;
+    if cmd.hides_window() {
+        window::hide(&app);
+    }
+    system::run(cmd)
+}
+
+#[tauri::command]
+pub fn open_settings_page(app: AppHandle, uri: String) -> Result<(), String> {
+    system::open_settings_page(&uri)?;
+    window::hide(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn open_url(app: AppHandle, url: String) -> Result<(), String> {
+    system::open_url(&url)?;
+    window::hide(&app);
+    Ok(())
+}
+
+/// Async because checking a network path can block for a while.
+#[tauri::command(async)]
+pub fn check_path(path: String) -> Option<PathInfo> {
+    system::check_path(&path)
+}
+
+#[tauri::command(async)]
+pub fn open_path(app: AppHandle, path: String, reveal: bool) -> Result<(), String> {
+    system::open_path(&path, reveal)?;
+    window::hide(&app);
+    Ok(())
+}
+
+#[tauri::command]
+pub fn suspend_auto_hide(suspended: bool) {
+    window::suspend_auto_hide(suspended);
+}
+
+// ---------- updates ----------
+
+#[tauri::command]
+pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, String> {
+    updater::check(&app).await
+}
+
+#[tauri::command]
+pub async fn install_update(app: AppHandle) -> Result<(), String> {
+    updater::install(&app).await
 }

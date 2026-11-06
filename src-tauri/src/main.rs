@@ -9,7 +9,9 @@ mod launcher;
 mod search;
 mod state;
 mod store;
+mod system;
 mod tray;
+mod updater;
 mod watcher;
 mod win;
 mod window;
@@ -39,6 +41,7 @@ fn main() {
                 })
                 .build(),
         )
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = app.path().app_local_data_dir()?;
@@ -48,6 +51,7 @@ fn main() {
             let hotkey = store
                 .get_setting("hotkey")
                 .unwrap_or_else(|| hotkey::DEFAULT.to_string());
+            let theme = commands::saved_theme(&store);
 
             // Serve the last known catalogue immediately; a fresh scan runs in the background.
             let cached = indexer::cache::load(&data_dir);
@@ -56,8 +60,10 @@ fn main() {
             hotkey::register_initial(&handle, &hotkey);
             tray::create(&handle)?;
             window::install(&handle);
+            window::apply_theme(&handle, &theme);
             state::refresh(&handle);
             watcher::start(&handle);
+            updater::check_in_background(&handle);
 
             // Show the launcher on a manual start so the user knows it's running.
             if !std::env::args().any(|a| a == hotkey::AUTOSTART_FLAG) {
@@ -78,6 +84,17 @@ fn main() {
             commands::suspend_hotkey,
             commands::set_autostart,
             commands::rescan,
+            commands::set_onboarded,
+            commands::set_search_engine,
+            commands::set_theme,
+            commands::run_system_command,
+            commands::open_settings_page,
+            commands::open_url,
+            commands::check_path,
+            commands::open_path,
+            commands::suspend_auto_hide,
+            commands::check_for_update,
+            commands::install_update,
         ])
         .run(tauri::generate_context!())
         .expect("error while running Fyn");

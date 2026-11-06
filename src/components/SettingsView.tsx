@@ -1,17 +1,34 @@
 import { useCallback, useEffect, useState } from "react";
-import { api, errorMessage, events, on, type Settings } from "../lib/ipc";
+import { ENGINES } from "../lib/entries";
+import {
+  api,
+  applyTheme,
+  errorMessage,
+  events,
+  on,
+  type SearchEngine,
+  type Settings,
+  type Theme,
+  type UpdateInfo,
+} from "../lib/ipc";
 import { fromEvent, toKeys } from "../lib/hotkey";
 import { Kbd } from "./Kbd";
 
 interface Props {
   onBack: () => void;
+  onShowWelcome: () => void;
+  update: UpdateInfo | null;
+  onUpdate: (update: UpdateInfo | null) => void;
 }
 
-export function SettingsView({ onBack }: Props) {
+type UpdateStatus = "idle" | "checking" | "latest" | "installing";
+
+export function SettingsView({ onBack, onShowWelcome, update, onUpdate }: Props) {
   const [settings, setSettings] = useState<Settings | null>(null);
   const [recording, setRecording] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [updateStatus, setUpdateStatus] = useState<UpdateStatus>("idle");
 
   const load = useCallback(() => {
     api.getSettings().then(setSettings).catch((e) => setError(errorMessage(e)));
@@ -87,10 +104,67 @@ export function SettingsView({ onBack }: Props) {
     }
   };
 
+  const changeTheme = async (theme: Theme) => {
+    if (!settings || settings.theme === theme) return;
+    applyTheme(theme); // instant feedback; reverted below if saving fails
+    try {
+      await api.setTheme(theme);
+      setSettings({ ...settings, theme });
+    } catch (e) {
+      applyTheme(settings.theme);
+      setError(errorMessage(e));
+    }
+  };
+
+  const setEngine = async (engine: SearchEngine) => {
+    if (!settings) return;
+    try {
+      await api.setSearchEngine(engine);
+      setSettings({ ...settings, searchEngine: engine });
+    } catch (e) {
+      setError(errorMessage(e));
+    }
+  };
+
   const rescan = () => {
     setNotice("Rescanning applications…");
     api.rescan().catch((e) => setError(errorMessage(e)));
   };
+
+  const checkForUpdate = async () => {
+    setError(null);
+    setUpdateStatus("checking");
+    try {
+      const found = await api.checkForUpdate();
+      onUpdate(found);
+      setUpdateStatus(found ? "idle" : "latest");
+    } catch (e) {
+      setError(errorMessage(e));
+      setUpdateStatus("idle");
+    }
+  };
+
+  const installUpdate = async () => {
+    setError(null);
+    setUpdateStatus("installing");
+    try {
+      await api.installUpdate(); // restarts the app on success
+    } catch (e) {
+      setError(errorMessage(e));
+      setUpdateStatus("idle");
+    }
+  };
+
+  const updateDesc =
+    updateStatus === "checking"
+      ? "Checking…"
+      : updateStatus === "installing"
+        ? "Downloading and installing. Fyn will restart."
+        : update
+          ? `Fyn ${update.version} is available (you have ${update.currentVersion}).`
+          : updateStatus === "latest"
+            ? "You're on the latest version."
+            : "Fyn checks for updates automatically.";
 
   return (
     <div className="settings">
@@ -137,6 +211,34 @@ export function SettingsView({ onBack }: Props) {
 
         <section className="setting">
           <div>
+            <div className="setting__title">Appearance</div>
+            <div className="setting__desc">Fyn’s theme. System follows Windows; your PC’s theme isn’t changed.</div>
+          </div>
+          <Segmented
+            value={settings?.theme ?? null}
+            options={[
+              { value: "system", label: "System" },
+              { value: "light", label: "Light" },
+              { value: "dark", label: "Dark" },
+            ]}
+            onChange={(v) => void changeTheme(v as Theme)}
+          />
+        </section>
+
+        <section className="setting">
+          <div>
+            <div className="setting__title">Search engine</div>
+            <div className="setting__desc">Used for “Search the web” results at the bottom of the list.</div>
+          </div>
+          <Segmented
+            value={settings?.searchEngine ?? null}
+            options={(Object.keys(ENGINES) as SearchEngine[]).map((id) => ({ value: id, label: ENGINES[id].name }))}
+            onChange={(v) => void setEngine(v as SearchEngine)}
+          />
+        </section>
+
+        <section className="setting">
+          <div>
             <div className="setting__title">Applications</div>
             <div className="setting__desc">
               {settings ? `${settings.appCount} apps indexed. ` : ""}New installs are picked up automatically.
@@ -147,8 +249,60 @@ export function SettingsView({ onBack }: Props) {
           </button>
         </section>
 
+        <section className="setting">
+          <div>
+            <div className="setting__title">Updates</div>
+            <div className="setting__desc">{updateDesc}</div>
+          </div>
+          {update ? (
+            <button className="btn btn--primary" onClick={installUpdate} disabled={updateStatus === "installing"}>
+              Install &amp; Restart
+            </button>
+          ) : (
+            <button className="btn" onClick={checkForUpdate} disabled={updateStatus === "checking"}>
+              Check for Updates
+            </button>
+          )}
+        </section>
+
+        <section className="setting">
+          <div>
+            <div className="setting__title">Getting started</div>
+            <div className="setting__desc">See the welcome tour and tips again.</div>
+          </div>
+          <button className="btn" onClick={onShowWelcome}>
+            Show Welcome
+          </button>
+        </section>
+
         <footer className="settings__footer">Fyn {settings?.version}</footer>
       </div>
+    </div>
+  );
+}
+
+function Segmented({
+  value,
+  options,
+  onChange,
+}: {
+  value: string | null;
+  options: { value: string; label: string }[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <div className="segmented" role="radiogroup">
+      {options.map((o) => (
+        <button
+          key={o.value}
+          role="radio"
+          aria-checked={value === o.value}
+          className={`segmented__item ${value === o.value ? "segmented__item--on" : ""}`}
+          onClick={() => onChange(o.value)}
+        >
+          {o.label}
+        </button>
+      ))}
     </div>
   );
 }

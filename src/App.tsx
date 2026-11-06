@@ -1,67 +1,134 @@
 import { Command } from "cmdk";
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ActionPanel } from "./components/ActionPanel";
-import { AppIcon } from "./components/AppIcon";
+import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ActionPanel, type PanelAction } from "./components/ActionPanel";
+import { ColorView } from "./components/ColorView";
+import { EntryIconView, GEAR_PATH } from "./components/EntryIconView";
 import { Kbd } from "./components/Kbd";
 import { SettingsView } from "./components/SettingsView";
+import { WelcomeView } from "./components/WelcomeView";
 import { actionFromKey, actionsFor, type ActionId } from "./lib/actions";
-import { api, errorMessage, events, on, type Home, type Item } from "./lib/ipc";
+import {
+  appEntry,
+  looksLikePath,
+  matchCommands,
+  quickEntries,
+  webFallbacks,
+  type Ctx,
+  type Entry,
+  type View,
+} from "./lib/entries";
+import {
+  api,
+  applyTheme,
+  errorMessage,
+  events,
+  on,
+  type Home,
+  type Item,
+  type PathInfo,
+  type Settings,
+  type UpdateInfo,
+} from "./lib/ipc";
+
+// The emoji data is ~300 KB; only load it when the picker is opened.
+const EmojiView = lazy(() => import("./components/EmojiView"));
+
+const DEV = import.meta.env.DEV;
 
 interface Section {
   key: string;
   title: string;
+  entries: Entry[];
+}
+
+interface Results {
+  query: string;
   items: Item[];
+  path: PathInfo | null;
 }
 
 interface Toast {
   text: string;
   error?: boolean;
+  ms?: number;
+}
+
+interface DevAction extends PanelAction {
+  run: () => void;
 }
 
 const valueOf = (section: string, id: string) => `${section}:${id}`;
 
 export function App() {
-  const [view, setView] = useState<"root" | "settings">("root");
+  const [view, setView] = useState<View>("root");
+  const [viewArg, setViewArg] = useState<string | undefined>();
   const [query, setQuery] = useState("");
   const [home, setHome] = useState<Home | null>(null);
-  const [results, setResults] = useState<Item[] | null>(null);
+  const [results, setResults] = useState<Results | null>(null);
+  const [settings, setSettings] = useState<Settings | null>(null);
+  const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [selected, setSelected] = useState("");
-  const [actionsOpen, setActionsOpen] = useState(false);
+  const [panel, setPanel] = useState<"actions" | "dev" | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
+  const [confirming, setConfirming] = useState<string | null>(null);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchSeq = useRef(0);
+  const selectFirst = useRef(false);
   const queryRef = useRef(query);
   queryRef.current = query;
 
-  const showToast = useCallback((text: string, error = false) => setToast({ text, error }), []);
+  const showToast = useCallback((text: string, error = false, ms?: number) => setToast({ text, error, ms }), []);
   const showError = useCallback((e: unknown) => showToast(errorMessage(e), true), [showToast]);
 
   useEffect(() => {
     if (!toast) return;
-    const t = setTimeout(() => setToast(null), toast.error ? 4000 : 1800);
+    const t = setTimeout(() => setToast(null), toast.ms ?? (toast.error ? 4000 : 1800));
     return () => clearTimeout(t);
   }, [toast]);
+
+  const focusInput = useCallback(() => requestAnimationFrame(() => inputRef.current?.focus()), []);
+
+  const openView = useCallback((next: View, arg?: string) => {
+    setPanel(null);
+    setViewArg(arg);
+    setView(next);
+  }, []);
 
   const loadHome = useCallback(() => {
     api.getHome().then(setHome).catch(showError);
   }, [showError]);
 
+  /** Reload settings; shows the welcome screen until the user has finished it once. */
+  const loadSettings = useCallback(
+    (checkOnboarding = false) => {
+      api
+        .getSettings()
+        .then((s) => {
+          setSettings(s);
+          applyTheme(s.theme);
+          if (checkOnboarding && !s.onboarded) openView("welcome");
+        })
+        .catch(showError);
+    },
+    [openView, showError],
+  );
+
   // Latest-request-wins search: stale responses are dropped.
   const runSearch = useCallback(
-    (q: string, selectFirst: boolean) => {
+    (q: string, fresh: boolean) => {
       const seq = ++searchSeq.current;
       if (!q.trim()) {
         setResults(null);
         return;
       }
-      api
-        .search(q)
-        .then((items) => {
+      const path = looksLikePath(q) ? api.checkPath(q).catch(() => null) : Promise.resolve(null);
+      Promise.all([api.search(q), path])
+        .then(([items, pathInfo]) => {
           if (seq !== searchSeq.current) return;
-          setResults(items);
-          if (selectFirst) setSelected(items[0] ? valueOf("res", items[0].id) : "");
+          if (fresh) selectFirst.current = true;
+          setResults({ query: q, items, path: pathInfo });
         })
         .catch(showError);
     },
@@ -75,108 +142,229 @@ export function App() {
     if (queryRef.current.trim()) runSearch(queryRef.current, false);
   }, [loadHome, runSearch]);
 
-  const focusInput = useCallback(() => requestAnimationFrame(() => inputRef.current?.focus()), []);
-
   // Backend events.
   useEffect(() => {
     loadHome();
+    loadSettings(true);
     const offs = [
       on(events.shown, () => {
         loadHome();
+        loadSettings(true);
         focusInput();
       }),
       on(events.hidden, () => {
         // Reset while hidden so the next open starts clean without flicker.
         setQuery("");
         setResults(null);
-        setActionsOpen(false);
+        setPanel(null);
+        setConfirming(null);
         setView("root");
         listRef.current?.scrollTo({ top: 0 });
       }),
       on(events.appsChanged, refresh),
-      on(events.openSettings, () => setView("settings")),
+      on(events.openSettings, () => openView("settings")),
+      on<UpdateInfo>(events.updateAvailable, setUpdate),
     ];
     return () => offs.forEach((off) => off());
-  }, [loadHome, refresh, focusInput]);
+  }, [loadHome, loadSettings, refresh, focusInput, openView]);
 
   const sections: Section[] = useMemo(() => {
-    if (results) return [{ key: "res", title: "Results", items: results }];
+    if (results) {
+      const q = results.query;
+      const quick = quickEntries(q, results.path);
+      const commands = matchCommands(q);
+      const apps: Section = { key: "res", title: "Applications", entries: results.items.map(appEntry) };
+      const cmds: Section = { key: "cmd", title: "Commands", entries: commands.entries };
+      // A strong command match ("lock", "wifi") beats apps that only match loosely.
+      const lower = q.trim().toLowerCase();
+      const appPrefix = results.items.some((i) => i.name.toLowerCase().startsWith(lower));
+      const middle = commands.best >= 68 && !appPrefix ? [cmds, apps] : [apps, cmds];
+      return [
+        { key: "top", title: quick.length > 1 ? "Top Results" : "Top Result", entries: quick },
+        ...middle,
+        { key: "web", title: `Use “${q.trim()}” with…`, entries: webFallbacks(q, settings?.searchEngine ?? "google") },
+      ].filter((s) => s.entries.length > 0);
+    }
     if (!home) return [];
     return [
-      { key: "fav", title: "Favorites", items: home.favorites },
-      { key: "sug", title: "Suggestions", items: home.suggestions },
-      { key: "app", title: "Applications", items: home.applications },
-    ].filter((s) => s.items.length > 0);
-  }, [home, results]);
+      { key: "fav", title: "Favorites", entries: home.favorites.map(appEntry) },
+      { key: "sug", title: "Suggestions", entries: home.suggestions.map(appEntry) },
+      { key: "app", title: "Applications", entries: home.applications.map(appEntry) },
+    ].filter((s) => s.entries.length > 0);
+  }, [home, results, settings?.searchEngine]);
 
   const byValue = useMemo(() => {
-    const map = new Map<string, Item>();
-    for (const s of sections) for (const item of s.items) map.set(valueOf(s.key, item.id), item);
+    const map = new Map<string, Entry>();
+    for (const s of sections) for (const entry of s.entries) map.set(valueOf(s.key, entry.id), entry);
     return map;
   }, [sections]);
 
-  // Keep the selection pointing at something that exists.
+  // New search -> select the first result; otherwise keep the selection on something that exists.
   useEffect(() => {
-    if (!byValue.has(selected)) {
+    if (selectFirst.current || !byValue.has(selected)) {
+      selectFirst.current = false;
       const first = byValue.keys().next();
       setSelected(first.done ? "" : first.value);
     }
   }, [byValue, selected]);
 
+  // A pending "press ↵ again" only applies to the item it was asked for, and expires.
+  useEffect(() => setConfirming(null), [selected]);
+  useEffect(() => {
+    if (!confirming) return;
+    const t = setTimeout(() => setConfirming(null), 4000);
+    return () => clearTimeout(t);
+  }, [confirming]);
+
   const current = byValue.get(selected) ?? null;
 
-  const runAction = useCallback(
-    async (action: ActionId, item: Item | null = current) => {
-      setActionsOpen(false);
-      focusInput();
-      if (!item) return;
-      try {
-        switch (action) {
-          case "open":
-            await api.launch(item.id);
-            break;
-          case "admin":
-            if (item.canRunAsAdmin) await api.launch(item.id, true);
-            break;
-          case "reveal":
-            await api.reveal(item.id);
-            break;
-          case "pin": {
-            const pinned = await api.togglePin(item.id);
-            showToast(pinned ? `Added ${item.name} to Favorites` : `Removed ${item.name} from Favorites`);
-            refresh();
-            break;
-          }
-          case "pin-up":
-          case "pin-down":
-            if (item.pinned) {
-              await api.movePin(item.id, action === "pin-up" ? -1 : 1);
-              refresh();
-            }
-            break;
-          case "copy":
-            await navigator.clipboard.writeText(item.path);
-            showToast("Copied path to clipboard");
-            break;
+  const checkForUpdates = useCallback(() => {
+    showToast("Checking for updates…");
+    api
+      .checkForUpdate()
+      .then((found) => {
+        setUpdate(found);
+        showToast(found ? `Fyn ${found.version} is available. Open Settings to install` : "Fyn is up to date");
+      })
+      .catch(showError);
+  }, [showError, showToast]);
+
+  const ctx: Ctx = useMemo(() => ({ openView, checkForUpdates }), [openView, checkForUpdates]);
+
+  const runAppAction = useCallback(
+    async (action: ActionId, item: Item) => {
+      switch (action) {
+        case "open":
+          await api.launch(item.id);
+          break;
+        case "admin":
+          if (item.canRunAsAdmin) await api.launch(item.id, true);
+          break;
+        case "reveal":
+          await api.reveal(item.id);
+          break;
+        case "pin": {
+          const pinned = await api.togglePin(item.id);
+          showToast(pinned ? `Added ${item.name} to Favorites` : `Removed ${item.name} from Favorites`);
+          refresh();
+          break;
         }
+        case "pin-up":
+        case "pin-down":
+          if (item.pinned) {
+            await api.movePin(item.id, action === "pin-up" ? -1 : 1);
+            refresh();
+          }
+          break;
+        case "copy":
+          await navigator.clipboard.writeText(item.path);
+          showToast("Copied path to clipboard");
+          break;
+      }
+    },
+    [refresh, showToast],
+  );
+
+  const runEntry = useCallback(
+    async (entry: Entry | null, actionId?: string) => {
+      setPanel(null);
+      focusInput();
+      if (!entry) return;
+      try {
+        if (entry.app) {
+          await runAppAction((actionId ?? "open") as ActionId, entry.app);
+          return;
+        }
+        const action =
+          !actionId || actionId === entry.primary.id ? entry.primary : entry.actions?.find((a) => a.id === actionId);
+        if (!action) return;
+        if (entry.confirm && action === entry.primary && confirming !== entry.id) {
+          setConfirming(entry.id);
+          showToast(`Press ↵ again to ${entry.confirm}`, false, 4000);
+          return;
+        }
+        setConfirming(null);
+        const message = await action.run(ctx);
+        if (typeof message === "string" && message) showToast(message);
       } catch (e) {
         showError(e);
       }
     },
-    [current, focusInput, refresh, showError, showToast],
+    [confirming, ctx, focusInput, runAppAction, showError, showToast],
   );
+
+  const panelActions: PanelAction[] = useMemo(() => {
+    if (!current) return [];
+    if (current.app) return actionsFor(current.app);
+    return [{ ...current.primary, keys: ["↵"] }, ...(current.actions ?? [])];
+  }, [current]);
+
+  const devActions: DevAction[] = useMemo(
+    () => [
+      { id: "welcome", title: "Show Welcome Screen", run: () => openView("welcome") },
+      { id: "settings", title: "Show Settings", run: () => openView("settings") },
+      { id: "emoji", title: "Show Emoji Picker", run: () => openView("emoji") },
+      { id: "color", title: "Show Color Picker", run: () => openView("color", "#7C3AED") },
+      {
+        id: "update",
+        title: "Simulate Update Available",
+        run: () =>
+          setUpdate({ version: "9.9.9", currentVersion: settings?.version ?? "0.0.0", notes: "Simulated from the dev menu" }),
+      },
+      { id: "update-clear", title: "Clear Update Notice", run: () => setUpdate(null) },
+      { id: "toast", title: "Show Toast", run: () => showToast("This is what a toast looks like") },
+      { id: "toast-error", title: "Show Error Toast", run: () => showToast("Something went wrong (example)", true) },
+      {
+        id: "onboarding",
+        title: "Reset Onboarding",
+        run: () =>
+          void api
+            .setOnboarded(false)
+            .then(() => showToast("The welcome screen will show the next time Fyn opens"))
+            .catch(showError),
+      },
+      { id: "reload", title: "Reload UI", run: () => location.reload() },
+    ],
+    [openView, settings?.version, showError, showToast],
+  );
+
+  // Dev menu: Ctrl+Shift+D from any screen (dev builds only).
+  useEffect(() => {
+    if (!DEV) return;
+    const onKey = (e: KeyboardEvent) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "d") {
+        e.preventDefault();
+        setView("root");
+        setPanel((p) => (p === "dev" ? null : "dev"));
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  const back = useCallback(() => {
+    setView("root");
+    loadSettings();
+    focusInput();
+  }, [focusInput, loadSettings]);
+
+  const finishWelcome = useCallback(() => {
+    api.setOnboarded(true).catch(showError);
+    setSettings((s) => (s ? { ...s, onboarded: true } : s));
+    back();
+  }, [back, showError]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
 
     if (ctrl && e.key.toLowerCase() === "k") {
       e.preventDefault();
-      if (current) setActionsOpen((o) => !o);
+      if (panelActions.length > 1) setPanel((p) => (p === "actions" ? null : "actions"));
       return;
     }
     if (ctrl && e.key === ",") {
       e.preventDefault();
-      setView("settings");
+      openView("settings");
       return;
     }
     // Ctrl+1…9 opens the matching favorite.
@@ -184,14 +372,14 @@ export function App() {
       const fav = home.favorites[Number(e.key) - 1];
       if (fav) {
         e.preventDefault();
-        void runAction("open", fav);
+        void runEntry(appEntry(fav));
       }
       return;
     }
     const action = actionFromKey(e);
-    if (action) {
+    if (action && current && (current.app || current.actions?.some((a) => a.id === action))) {
       e.preventDefault();
-      void runAction(action);
+      void runEntry(current, action);
       return;
     }
     if (e.key === "Escape") {
@@ -205,14 +393,46 @@ export function App() {
     return (
       <div className="launcher">
         <SettingsView
-          onBack={() => {
-            setView("root");
-            focusInput();
+          onBack={back}
+          onShowWelcome={() => openView("welcome")}
+          update={update}
+          onUpdate={setUpdate}
+        />
+      </div>
+    );
+  }
+  if (view === "welcome") {
+    return (
+      <div className="launcher">
+        <WelcomeView
+          settings={settings}
+          onDone={finishWelcome}
+          onChangeHotkey={() => {
+            finishWelcome();
+            openView("settings");
           }}
         />
       </div>
     );
   }
+  if (view === "emoji") {
+    return (
+      <div className="launcher">
+        <Suspense fallback={null}>
+          <EmojiView onBack={back} />
+        </Suspense>
+      </div>
+    );
+  }
+  if (view === "color") {
+    return (
+      <div className="launcher">
+        <ColorView initial={viewArg} onBack={back} />
+      </div>
+    );
+  }
+
+  const confirmingCurrent = current && confirming === current.id;
 
   return (
     <div className="launcher">
@@ -232,7 +452,7 @@ export function App() {
             className="search__input"
             value={query}
             onValueChange={setQuery}
-            placeholder="Search for apps and commands…"
+            placeholder="Search apps, commands, or do math…"
             autoFocus
             spellCheck={false}
             maxLength={256}
@@ -240,17 +460,15 @@ export function App() {
         </div>
 
         <Command.List ref={listRef} className="list">
-          {home && (
-            <Command.Empty className="empty">No results for “{query}”</Command.Empty>
-          )}
+          {home && <Command.Empty className="empty">No results for “{query}”</Command.Empty>}
           {sections.map((s) => (
             <Command.Group key={s.key} heading={s.title} className="group">
-              {s.items.map((item) => (
+              {s.entries.map((entry) => (
                 <Row
-                  key={item.id}
-                  value={valueOf(s.key, item.id)}
-                  item={item}
-                  onOpen={() => void runAction("open", item)}
+                  key={entry.id}
+                  value={valueOf(s.key, entry.id)}
+                  entry={entry}
+                  onRun={() => void runEntry(entry)}
                 />
               ))}
             </Command.Group>
@@ -263,31 +481,69 @@ export function App() {
           {toast ? (
             <span className={`toast ${toast.error ? "toast--error" : ""}`}>{toast.text}</span>
           ) : (
-            <button className="icon-btn" aria-label="Settings" title="Settings (Ctrl+,)" onClick={() => setView("settings")}>
-              <GearIcon />
-            </button>
+            <>
+              <button
+                className="icon-btn"
+                aria-label="Settings"
+                title="Settings (Ctrl+,)"
+                onClick={() => openView("settings")}
+              >
+                <GearIcon />
+              </button>
+              {update && (
+                <button className="pill" onClick={() => openView("settings")} title="Open Settings to install">
+                  Update {update.version} available
+                </button>
+              )}
+              {DEV && (
+                <button className="pill pill--dev" onClick={() => setPanel("dev")} title="Developer menu (Ctrl+Shift+D)">
+                  DEV
+                </button>
+              )}
+            </>
           )}
         </div>
         {current && (
           <div className="footer__right">
-            <button className="footer__action" onClick={() => void runAction("open")}>
-              Open Application <Kbd keys={["↵"]} />
+            <button className="footer__action" onClick={() => void runEntry(current)}>
+              {confirmingCurrent ? "Press ↵ to Confirm" : current.primary.title} <Kbd keys={["↵"]} />
             </button>
-            <span className="footer__divider" />
-            <button className="footer__action" onClick={() => setActionsOpen((o) => !o)}>
-              Actions <Kbd keys={["Ctrl", "K"]} />
-            </button>
+            {panelActions.length > 1 && (
+              <>
+                <span className="footer__divider" />
+                <button className="footer__action" onClick={() => setPanel((p) => (p === "actions" ? null : "actions"))}>
+                  Actions <Kbd keys={["Ctrl", "K"]} />
+                </button>
+              </>
+            )}
           </div>
         )}
       </footer>
 
-      {actionsOpen && current && (
+      {panel === "actions" && current && (
         <ActionPanel
-          title={current.name}
-          actions={actionsFor(current)}
-          onRun={(id) => void runAction(id)}
+          title={current.title}
+          actions={panelActions}
+          onRun={(id) => void runEntry(current, id)}
           onClose={() => {
-            setActionsOpen(false);
+            setPanel(null);
+            focusInput();
+          }}
+        />
+      )}
+
+      {DEV && panel === "dev" && (
+        <ActionPanel
+          title="Developer: open a screen or state"
+          placeholder="Search dev actions…"
+          actions={devActions}
+          onRun={(id) => {
+            setPanel(null);
+            devActions.find((a) => a.id === id)?.run();
+            focusInput();
+          }}
+          onClose={() => {
+            setPanel(null);
             focusInput();
           }}
         />
@@ -296,21 +552,20 @@ export function App() {
   );
 }
 
-const KIND_LABEL: Record<Item["kind"], string> = {
-  desktop: "Application",
-  store: "Store App",
-  link: "Shortcut",
-};
-
-const Row = memo(function Row({ item, value, onOpen }: { item: Item; value: string; onOpen: () => void }) {
+const Row = memo(function Row({ entry, value, onRun }: { entry: Entry; value: string; onRun: () => void }) {
   return (
-    <Command.Item value={value} className="row" onSelect={onOpen}>
-      <AppIcon item={item} />
+    <Command.Item value={value} className="row" onSelect={onRun}>
+      <EntryIconView icon={entry.icon} />
       <span className="row__name">
-        <Highlight text={item.name} matches={item.matches} />
+        {entry.prefix && <span className="row__prefix">{entry.prefix} </span>}
+        <Highlight text={entry.title} matches={entry.matches ?? []} />
       </span>
-      {item.pinned && <span className="row__pin" title="Favorite">★</span>}
-      <span className="row__kind">{KIND_LABEL[item.kind]}</span>
+      {entry.app?.pinned && (
+        <span className="row__pin" title="Favorite">
+          ★
+        </span>
+      )}
+      <span className="row__kind">{entry.subtitle}</span>
       <OpenIcon />
     </Command.Item>
   );
@@ -354,14 +609,19 @@ function OpenIcon() {
 
 function GearIcon() {
   return (
-    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden>
-      <path
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.6"
-        strokeLinejoin="round"
-        d="M12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm7.4-3a7.4 7.4 0 0 0-.1-1.2l2-1.6-2-3.4-2.4 1a7.6 7.6 0 0 0-2-1.2L14.5 3h-4l-.4 2.6a7.6 7.6 0 0 0-2 1.2l-2.4-1-2 3.4 2 1.6a7.4 7.4 0 0 0 0 2.4l-2 1.6 2 3.4 2.4-1a7.6 7.6 0 0 0 2 1.2l.4 2.6h4l.4-2.6a7.6 7.6 0 0 0 2-1.2l2.4 1 2-3.4-2-1.6c.1-.4.1-.8.1-1.2Z"
-      />
+    <svg
+      viewBox="0 0 24 24"
+      width="18"
+      height="18"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.7"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d={GEAR_PATH} />
+      <circle cx="12" cy="12" r="3" />
     </svg>
   );
 }

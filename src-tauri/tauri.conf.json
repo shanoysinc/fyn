@@ -37,6 +37,13 @@
       }
     }
   },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDdGOTEzNDI0MDBBQTM1QTkKUldTcE5hb0FKRFNSZjlFeFhtRFhwZDJXZ0lrUlJCWmFPd2lKQ04wY0t1ejBJdGI2cHdXbGxyMXYK",
+      "endpoints": ["https://github.com/OWNER/fyn/releases/latest/download/latest.json"],
+      "windows": { "installMode": "passive" }
+    }
+  },
   "bundle": {
     "active": true,
     "targets": ["nsis", "msi"],

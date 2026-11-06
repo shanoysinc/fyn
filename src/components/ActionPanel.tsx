@@ -1,16 +1,22 @@
 import { Command } from "cmdk";
 import { useState } from "react";
-import type { Action, ActionId } from "../lib/actions";
 import { Kbd } from "./Kbd";
+
+export interface PanelAction {
+  id: string;
+  title: string;
+  keys?: string[];
+}
 
 interface Props {
   title: string;
-  actions: Action[];
-  onRun: (id: ActionId) => void;
+  actions: PanelAction[];
+  onRun: (id: string) => void;
   onClose: () => void;
+  placeholder?: string;
 }
 
-export function ActionPanel({ title, actions, onRun, onClose }: Props) {
+export function ActionPanel({ title, actions, onRun, onClose, placeholder = "Search for actions…" }: Props) {
   const [search, setSearch] = useState("");
 
   return (
@@ -18,7 +24,7 @@ export function ActionPanel({ title, actions, onRun, onClose }: Props) {
       <div className="actions-backdrop" onMouseDown={onClose} />
       <Command
         className="actions"
-        label="Actions"
+        label={title}
         loop
         onKeyDown={(e) => {
           if (e.key === "Escape" || ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "k")) {
@@ -32,15 +38,15 @@ export function ActionPanel({ title, actions, onRun, onClose }: Props) {
         <Command.List className="actions__list">
           <Command.Empty className="actions__empty">No matching actions</Command.Empty>
           {actions.map((a) => (
-            <Command.Item key={a.id} value={a.title} className="actions__item" onSelect={() => onRun(a.id)}>
+            <Command.Item key={a.id} value={`${a.title} ${a.id}`} className="actions__item" onSelect={() => onRun(a.id)}>
               <span>{a.title}</span>
-              <Kbd keys={a.keys} />
+              {a.keys && <Kbd keys={a.keys} />}
             </Command.Item>
           ))}
         </Command.List>
         <Command.Input
           className="actions__input"
-          placeholder="Search for actions…"
+          placeholder={placeholder}
           value={search}
           onValueChange={setSearch}
           autoFocus
