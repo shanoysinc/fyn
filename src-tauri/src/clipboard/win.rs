@@ -124,21 +124,14 @@ unsafe fn read_wide(handle: HANDLE) -> Option<Zeroizing<String>> {
     Some(text)
 }
 
-/// Put `text` on the clipboard. `private` also tells Windows' own clipboard history and
-/// cloud sync to skip it (used for password-like items).
-pub fn write(text: &str, private: bool) -> Result<(), String> {
+/// Put `text` on the clipboard (pasting a history item back).
+pub fn write(text: &str) -> Result<(), String> {
     let _open = Opened::open(None)?;
     unsafe {
         EmptyClipboard().map_err(|e| e.to_string())?;
         let mut wide: Zeroizing<Vec<u16>> = Zeroizing::new(text.encode_utf16().chain(std::iter::once(0)).collect());
         set_bytes(UNICODE_TEXT, std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2))?;
         wide.zeroize();
-        if private {
-            let zero = 0u32.to_le_bytes();
-            set_bytes(format(w!("CanIncludeInClipboardHistory")), &zero)?;
-            set_bytes(format(w!("CanUploadToCloudClipboard")), &zero)?;
-            set_bytes(format(w!("ExcludeClipboardContentFromMonitorProcessing")), &zero)?;
-        }
     }
     drop(_open);
     OWN_SEQUENCE.store(sequence(), Ordering::SeqCst);

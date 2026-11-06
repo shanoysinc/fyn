@@ -1,16 +1,12 @@
 //! Encryption for clipboard history, using Windows' own data protection (DPAPI).
 //!
-//! * [`protect`] / [`unprotect`]: for items saved to disk. Tied to the signed-in Windows
-//!   user, so another account (or someone reading the drive) can't decrypt them.
-//! * [`SecretText`]: for password-like items kept in memory. Encrypted with
-//!   CryptProtectMemory (readable only inside this process), and wiped when dropped.
+//! [`protect`] / [`unprotect`] encrypt items saved to disk. Tied to the signed-in Windows
+//! user, so another account (or someone reading the drive) can't decrypt them.
 
 use windows::core::PCWSTR;
 use windows::Win32::Foundation::{LocalFree, HLOCAL};
 use windows::Win32::Security::Cryptography::{
-    CryptProtectData, CryptProtectMemory, CryptUnprotectData, CryptUnprotectMemory,
-    CRYPTPROTECTMEMORY_BLOCK_SIZE, CRYPTPROTECTMEMORY_SAME_PROCESS, CRYPTPROTECT_UI_FORBIDDEN,
-    CRYPT_INTEGER_BLOB,
+    CryptProtectData, CryptUnprotectData, CRYPTPROTECT_UI_FORBIDDEN, CRYPT_INTEGER_BLOB,
 };
 use zeroize::{Zeroize, Zeroizing};
 
@@ -55,51 +51,6 @@ pub fn unprotect(cipher: &[u8]) -> Result<Zeroizing<String>, String> {
     String::from_utf8(bytes.to_vec()).map(Zeroizing::new).map_err(|_| "Corrupt clipboard item".into())
 }
 
-/// Text held encrypted in memory; plain only briefly inside [`SecretText::reveal`].
-pub struct SecretText {
-    /// Ciphertext, padded to CryptProtectMemory's block size.
-    buf: Vec<u8>,
-    len: usize,
-}
-
-impl SecretText {
-    pub fn new(plain: &str) -> Result<Self, String> {
-        let block = CRYPTPROTECTMEMORY_BLOCK_SIZE as usize;
-        let len = plain.len();
-        let mut buf = vec![0u8; len.div_ceil(block).max(1) * block];
-        buf[..len].copy_from_slice(plain.as_bytes());
-        unsafe {
-            CryptProtectMemory(buf.as_mut_ptr() as *mut _, buf.len() as u32, CRYPTPROTECTMEMORY_SAME_PROCESS)
-        }
-        .map_err(|e| {
-            buf.zeroize();
-            format!("Couldn't protect clipboard item: {e}")
-        })?;
-        Ok(Self { buf, len })
-    }
-
-    /// Decrypt into a buffer that's wiped when it's dropped.
-    pub fn reveal(&self) -> Result<Zeroizing<String>, String> {
-        let mut copy = Zeroizing::new(self.buf.clone());
-        unsafe {
-            CryptUnprotectMemory(copy.as_mut_ptr() as *mut _, copy.len() as u32, CRYPTPROTECTMEMORY_SAME_PROCESS)
-        }
-        .map_err(|e| format!("Couldn't read clipboard item: {e}"))?;
-        let text = std::str::from_utf8(&copy[..self.len]).map_err(|_| "Corrupt clipboard item".to_string())?;
-        Ok(Zeroizing::new(text.to_owned()))
-    }
-
-    pub fn char_count(&self) -> Result<usize, String> {
-        Ok(self.reveal()?.chars().count())
-    }
-}
-
-impl Drop for SecretText {
-    fn drop(&mut self) {
-        self.buf.zeroize();
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -117,17 +68,5 @@ mod tests {
         let last = cipher.len() - 1;
         cipher[last] ^= 0xFF;
         assert!(unprotect(&cipher).is_err());
-    }
-
-    #[test]
-    fn secret_text_is_encrypted_in_memory() {
-        for plain in ["kX9#mP2$vL7q", "", "a", "exactly16bytes!!", "seventeen bytes!!"] {
-            let secret = SecretText::new(plain).unwrap();
-            if plain.len() >= 4 {
-                assert!(!secret.buf.windows(4).any(|w| w == &plain.as_bytes()[..4]), "{plain} visible in memory");
-            }
-            assert_eq!(&*secret.reveal().unwrap(), plain);
-            assert_eq!(secret.char_count().unwrap(), plain.chars().count());
-        }
     }
 }

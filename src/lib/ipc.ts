@@ -47,9 +47,7 @@ export interface PathInfo {
 export interface ClipSettings {
   enabled: boolean;
   retentionDays: 1 | 7 | 30;
-  /** Password-like copies: "mask" = keep masked for a minute; "skip" = don't keep. */
-  sensitive: "mask" | "skip";
-  /** Clear the clipboard a minute after a password-like copy. */
+  /** Clear the clipboard a minute after a password-like copy (which is never stored). */
   clearSensitive: boolean;
   /** App file names (e.g. "keepassxc.exe") whose copies are never recorded. */
   ignoredApps: string[];
@@ -62,19 +60,14 @@ export interface ClipStatus extends ClipSettings {
 }
 
 export interface ClipEntry {
-  /** Negative for password-like items (memory only). */
   id: number;
-  /** null for password-like items: only ever shown masked unless revealed. */
-  text: string | null;
+  text: string;
   truncated: boolean;
-  sensitive: boolean;
   chars: number;
   /** App it was copied from, e.g. "code.exe". */
   source: string | null;
   /** Unix seconds. */
   created: number;
-  /** Seconds left for a password-like item. */
-  expiresIn: number | null;
 }
 
 export interface UpdateInfo {
@@ -124,8 +117,6 @@ export const api = {
   clipboardStatus: () => invoke<ClipStatus>("clipboard_status"),
   setClipboardSettings: (settings: ClipSettings) => invoke<ClipStatus>("set_clipboard_settings", { settings }),
   clipboardList: () => invoke<ClipEntry[]>("clipboard_list"),
-  /** The only way a password-like item's text reaches the UI. */
-  clipboardReveal: (id: number) => invoke<string>("clipboard_reveal", { id }),
   clipboardCopy: (id: number) => invoke<void>("clipboard_copy", { id }),
   /** Hides Fyn and pastes into the app that was in front. */
   clipboardPaste: (id: number) => invoke<void>("clipboard_paste", { id }),

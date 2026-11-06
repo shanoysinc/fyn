@@ -2,8 +2,8 @@
 //!
 //! * [`Class::Never`]: known secret formats (API keys and tokens, private keys,
 //!   credentials in URLs or `password=` lines, card numbers). Never stored anywhere.
-//! * [`Class::Sensitive`]: text that *looks like* a generated password. Kept masked,
-//!   encrypted in memory only, for a minute.
+//! * [`Class::Sensitive`]: text that *looks like* a generated password. Never kept either
+//!   (not even in memory); the clipboard may be cleared after a minute.
 //! * [`Class::Normal`]: everything else.
 //!
 //! Key formats follow the gitleaks rule set (MIT). Password detection is a heuristic:

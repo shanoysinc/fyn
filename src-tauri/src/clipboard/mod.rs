@@ -3,10 +3,10 @@
 //! Privacy, in layers (see README "Clipboard history"):
 //! 1. Copies flagged "don't record" by the copying app (password managers) are skipped.
 //! 2. Copies made in ignored apps are skipped.
-//! 3. Known secret formats and card numbers are never kept ([`classify`]).
-//! 4. Password-like text is kept masked, encrypted in memory only, for a minute, and
-//!    optionally cleared from the clipboard after that.
-//! 5. Everything else is stored DPAPI-encrypted, pruned by age and count.
+//! 3. Known secret formats, card numbers and anything that looks like a password are
+//!    never kept: not on disk, not in memory ([`classify`]). Optionally, a password-like
+//!    copy is also cleared from the clipboard after a minute.
+//! 4. Everything else is stored DPAPI-encrypted, pruned by age and count.
 //!
 //! Off until the user turns it on; turning it off deletes everything.
 
@@ -31,15 +31,14 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use zeroize::Zeroizing;
 
 use self::classify::Class;
-use self::crypto::SecretText;
 use crate::state::AppState;
 use crate::store::{now, Store};
 use crate::window;
 
 pub const EVT_CHANGED: &str = "fyn://clipboard-changed";
 
-/// How long password-like items live (in memory only).
-const SENSITIVE_TTL: Duration = Duration::from_secs(60);
+/// How long a password-like copy may stay on the clipboard (if that option is on).
+const CLEAR_AFTER: Duration = Duration::from_secs(60);
 const MAX_ITEMS: usize = 200;
 /// Longest text sent to the UI for one item (the full text is still pasted).
 const MAX_UI_CHARS: usize = 20_000;
@@ -48,12 +47,10 @@ const PASTE_DELAY: Duration = Duration::from_millis(150);
 
 const KEY_ENABLED: &str = "clipboard_enabled";
 const KEY_RETENTION: &str = "clipboard_retention_days";
-const KEY_SENSITIVE: &str = "clipboard_sensitive";
 const KEY_CLEAR: &str = "clipboard_clear_sensitive";
 const KEY_IGNORED: &str = "clipboard_ignored_apps";
 
 const RETENTIONS: [u32; 3] = [1, 7, 30];
-const SENSITIVE_MODES: [&str; 2] = ["mask", "skip"];
 const MAX_IGNORED: usize = 50;
 
 /// Password managers: nothing copied while one of these is in front is ever recorded.
@@ -76,9 +73,8 @@ pub const DEFAULT_IGNORED: [&str; 11] = [
 pub struct ClipSettings {
     pub enabled: bool,
     pub retention_days: u32,
-    /// "mask" (keep masked for a minute) or "skip" (don't keep at all).
-    pub sensitive: String,
-    /// Clear the system clipboard a minute after a password-like copy.
+    /// Clear the system clipboard a minute after a password-like copy (unless something
+    /// else was copied since). The password itself is never stored either way.
     pub clear_sensitive: bool,
     pub ignored_apps: Vec<String>,
 }
@@ -88,7 +84,6 @@ impl Default for ClipSettings {
         Self {
             enabled: false,
             retention_days: 7,
-            sensitive: "mask".into(),
             clear_sensitive: true,
             ignored_apps: DEFAULT_IGNORED.iter().map(|s| s.to_string()).collect(),
         }
@@ -105,10 +100,6 @@ impl ClipSettings {
                 .and_then(|v| v.parse().ok())
                 .filter(|v| RETENTIONS.contains(v))
                 .unwrap_or(d.retention_days),
-            sensitive: store
-                .get_setting(KEY_SENSITIVE)
-                .filter(|v| SENSITIVE_MODES.contains(&v.as_str()))
-                .unwrap_or(d.sensitive),
             clear_sensitive: store.get_setting(KEY_CLEAR).map_or(d.clear_sensitive, |v| v == "1"),
             ignored_apps: store
                 .get_setting(KEY_IGNORED)
@@ -120,7 +111,6 @@ impl ClipSettings {
     fn save(&self, store: &Store) -> rusqlite::Result<()> {
         store.set_setting(KEY_ENABLED, if self.enabled { "1" } else { "0" })?;
         store.set_setting(KEY_RETENTION, &self.retention_days.to_string())?;
-        store.set_setting(KEY_SENSITIVE, &self.sensitive)?;
         store.set_setting(KEY_CLEAR, if self.clear_sensitive { "1" } else { "0" })?;
         store.set_setting(KEY_IGNORED, &self.ignored_apps.join("\n"))
     }
@@ -129,9 +119,6 @@ impl ClipSettings {
     fn validated(mut self) -> Result<Self, String> {
         if !RETENTIONS.contains(&self.retention_days) {
             return Err("Unknown retention period".into());
-        }
-        if !SENSITIVE_MODES.contains(&self.sensitive.as_str()) {
-            return Err("Unknown setting for password-like items".into());
         }
         let mut apps = Vec::new();
         for app in &self.ignored_apps {
@@ -164,21 +151,10 @@ struct Item {
     created: i64,
 }
 
-struct Secret {
-    id: i64,
-    text: SecretText,
-    source: Option<String>,
-    created: i64,
-    expires: Instant,
-}
-
 struct Inner {
     settings: ClipSettings,
     /// Newest first.
     items: Vec<Item>,
-    secrets: Vec<Secret>,
-    /// Secrets use negative ids so they never collide with stored rows.
-    next_secret_id: i64,
     /// `Some(None)` = paused until resumed.
     paused: Option<Option<Instant>>,
 }
@@ -193,13 +169,6 @@ impl Inner {
             Some(_) => true,
             None => false,
         }
-    }
-
-    fn purge_expired(&mut self) -> bool {
-        let before = self.secrets.len();
-        let now = Instant::now();
-        self.secrets.retain(|s| s.expires > now); // dropped SecretText wipes itself
-        before != self.secrets.len()
     }
 }
 
@@ -218,9 +187,7 @@ pub fn init(app: &AppHandle) {
     let items = if settings.enabled { load_items(&store) } else { Vec::new() };
     drop(store);
 
-    app.manage(ClipState {
-        inner: Mutex::new(Inner { settings, items, secrets: Vec::new(), next_secret_id: -1, paused: None }),
-    });
+    app.manage(ClipState { inner: Mutex::new(Inner { settings, items, paused: None }) });
     let _ = APP.set(app.clone());
     std::thread::Builder::new()
         .name("fyn-clipboard".into())
@@ -307,26 +274,39 @@ fn on_clipboard_change(app: &AppHandle, hwnd: HWND) {
     if source.as_ref().is_some_and(|s| settings.ignored_apps.contains(s)) {
         return;
     }
+    // `text` is wiped when it goes out of scope, whichever branch runs.
     let text = match win::read(hwnd) {
         Ok(win::Read::Text(text)) => text,
         _ => return, // excluded by the copying app, not text, or the clipboard was busy
     };
 
-    let changed = match classify::classify(&text) {
-        Class::Never(_) => false,
-        Class::Sensitive if settings.sensitive == "skip" => false,
-        Class::Sensitive => {
-            add_secret(app, &text, source, settings.clear_sensitive.then_some(seq));
-            true
+    match classify::classify(&text) {
+        Class::Normal => {
+            if add_item(app, &text, source, &settings).is_ok() {
+                let _ = app.emit(EVT_CHANGED, ());
+            }
         }
-        Class::Normal => add_item(app, &text, source, &settings).is_ok(),
-    };
-    if changed {
-        let _ = app.emit(EVT_CHANGED, ());
+        // Looks like a password: never kept, anywhere. Optionally take it off the
+        // clipboard too, a minute from now, if nothing else has been copied by then.
+        Class::Sensitive => {
+            if settings.clear_sensitive {
+                clear_later(seq);
+            }
+        }
+        Class::Never(_) => {}
     }
 }
 
-/// Save a normal item (encrypted), moving an identical older one to the top.
+/// Empty the clipboard after [`CLEAR_AFTER`] if it still holds the copy made at `seq`.
+/// Only the clipboard's change counter is remembered, never its contents.
+fn clear_later(seq: u32) {
+    std::thread::spawn(move || {
+        std::thread::sleep(CLEAR_AFTER);
+        win::clear_if_unchanged(seq);
+    });
+}
+
+/// Save an item (encrypted), moving an identical older one to the top.
 fn add_item(app: &AppHandle, text: &str, source: Option<String>, settings: &ClipSettings) -> Result<(), String> {
     let clip = app.state::<ClipState>();
     let state = app.state::<AppState>();
@@ -349,53 +329,17 @@ fn add_item(app: &AppHandle, text: &str, source: Option<String>, settings: &Clip
     Ok(())
 }
 
-/// Keep a password-like item encrypted in memory for a minute; optionally clear the
-/// clipboard after that if it still holds it (`clear_seq`).
-fn add_secret(app: &AppHandle, text: &str, source: Option<String>, clear_seq: Option<u32>) {
-    let clip = app.state::<ClipState>();
-    let Ok(secret) = SecretText::new(text) else { return };
-    {
-        let mut inner = clip.inner.lock().unwrap();
-        inner.secrets.retain(|s| s.text.reveal().map(|t| *t != text).unwrap_or(true));
-        let id = inner.next_secret_id;
-        inner.next_secret_id -= 1;
-        inner.secrets.insert(
-            0,
-            Secret { id, text: secret, source, created: now(), expires: Instant::now() + SENSITIVE_TTL },
-        );
-    }
-    expire_later(app, clear_seq);
-}
-
-/// After the TTL: wipe expired secrets, clear the clipboard if asked, refresh the UI.
-fn expire_later(app: &AppHandle, clear_seq: Option<u32>) {
-    let app = app.clone();
-    std::thread::spawn(move || {
-        std::thread::sleep(SENSITIVE_TTL + Duration::from_millis(100));
-        if let Some(seq) = clear_seq {
-            win::clear_if_unchanged(seq);
-        }
-        if app.state::<ClipState>().inner.lock().unwrap().purge_expired() {
-            let _ = app.emit(EVT_CHANGED, ());
-        }
-    });
-}
-
 // ---------- commands ----------
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ClipEntry {
     id: i64,
-    /// None for password-like items: the UI only ever shows a mask.
-    text: Option<String>,
+    text: String,
     truncated: bool,
-    sensitive: bool,
     chars: usize,
     source: Option<String>,
     created: i64,
-    /// Seconds until a password-like item disappears.
-    expires_in: Option<u64>,
 }
 
 #[derive(Serialize)]
@@ -436,7 +380,6 @@ pub fn set_clipboard_settings(
     settings.save(&store).map_err(|e| e.to_string())?;
     if !settings.enabled {
         inner.items.clear();
-        inner.secrets.clear();
         inner.paused = None;
         store.clip_delete_all().map_err(|e| e.to_string())?;
     } else if settings.retention_days < inner.settings.retention_days {
@@ -453,55 +396,22 @@ pub fn set_clipboard_settings(
 
 #[tauri::command]
 pub fn clipboard_list(clip: State<ClipState>) -> Vec<ClipEntry> {
-    let mut inner = clip.inner.lock().unwrap();
-    inner.purge_expired();
-    let now_instant = Instant::now();
-    let mut entries: Vec<ClipEntry> = inner
-        .secrets
+    let inner = clip.inner.lock().unwrap();
+    inner
+        .items
         .iter()
-        .map(|s| ClipEntry {
-            id: s.id,
-            text: None,
-            truncated: false,
-            sensitive: true,
-            chars: s.text.char_count().unwrap_or(0),
-            source: s.source.clone(),
-            created: s.created,
-            expires_in: Some(s.expires.saturating_duration_since(now_instant).as_secs()),
-        })
-        .chain(inner.items.iter().map(|i| {
+        .map(|i| {
             let chars = i.text.chars().count();
             ClipEntry {
                 id: i.id,
-                text: Some(i.text.chars().take(MAX_UI_CHARS).collect()),
+                text: i.text.chars().take(MAX_UI_CHARS).collect(),
                 truncated: chars > MAX_UI_CHARS,
-                sensitive: false,
                 chars,
                 source: i.source.clone(),
                 created: i.created,
-                expires_in: None,
             }
-        }))
-        .collect();
-    entries.sort_by(|a, b| b.created.cmp(&a.created).then(b.id.cmp(&a.id)));
-    entries
-}
-
-/// The full text of an item (decrypted for a password-like one). Wiped after use by callers.
-fn item_text(inner: &Inner, id: i64) -> Result<(Zeroizing<String>, bool), String> {
-    if id < 0 {
-        let secret = inner.secrets.iter().find(|s| s.id == id).ok_or("That item has expired")?;
-        return Ok((secret.text.reveal()?, true));
-    }
-    let item = inner.items.iter().find(|i| i.id == id).ok_or("That item is no longer in the history")?;
-    Ok((Zeroizing::new(item.text.to_string()), false))
-}
-
-/// Show a password-like item's text (the only time it reaches the UI).
-#[tauri::command]
-pub fn clipboard_reveal(clip: State<ClipState>, id: i64) -> Result<String, String> {
-    let inner = clip.inner.lock().unwrap();
-    item_text(&inner, id).map(|(t, _)| t.to_string())
+        })
+        .collect()
 }
 
 /// Copy an item back onto the clipboard (and to the top of the history).
@@ -522,39 +432,22 @@ pub fn clipboard_paste(app: AppHandle, id: i64) -> Result<(), String> {
 
 fn put_back(app: &AppHandle, id: i64) -> Result<(), String> {
     let clip = app.state::<ClipState>();
-    let (text, sensitive, settings, source) = {
+    let (text, source, settings) = {
         let inner = clip.inner.lock().unwrap();
-        let (text, sensitive) = item_text(&inner, id)?;
-        let source = inner.items.iter().find(|i| i.id == id).and_then(|i| i.source.clone());
-        (text, sensitive, inner.settings.clone(), source)
+        let item = inner.items.iter().find(|i| i.id == id).ok_or("That item is no longer in the history")?;
+        (Zeroizing::new(item.text.to_string()), item.source.clone(), inner.settings.clone())
     };
-    win::write(&text, sensitive)?;
-    if sensitive {
-        if settings.clear_sensitive {
-            // Same rule as for the original copy: gone from the clipboard after a minute
-            // unless something else has been copied since.
-            let seq = win::sequence();
-            std::thread::spawn(move || {
-                std::thread::sleep(SENSITIVE_TTL);
-                win::clear_if_unchanged(seq);
-            });
-        }
-    } else {
-        add_item(app, &text, source, &settings)?; // moves it to the top
-        let _ = app.emit(EVT_CHANGED, ());
-    }
+    win::write(&text)?;
+    add_item(app, &text, source, &settings)?; // moves it to the top
+    let _ = app.emit(EVT_CHANGED, ());
     Ok(())
 }
 
 #[tauri::command]
 pub fn clipboard_delete(app: AppHandle, clip: State<ClipState>, state: State<AppState>, id: i64) -> Result<(), String> {
     let mut inner = clip.inner.lock().unwrap();
-    if id < 0 {
-        inner.secrets.retain(|s| s.id != id);
-    } else {
-        inner.items.retain(|i| i.id != id);
-        state.store.lock().unwrap().clip_delete(id).map_err(|e| e.to_string())?;
-    }
+    inner.items.retain(|i| i.id != id);
+    state.store.lock().unwrap().clip_delete(id).map_err(|e| e.to_string())?;
     drop(inner);
     let _ = app.emit(EVT_CHANGED, ());
     Ok(())
@@ -564,7 +457,6 @@ pub fn clipboard_delete(app: AppHandle, clip: State<ClipState>, state: State<App
 pub fn clipboard_clear(app: AppHandle, clip: State<ClipState>, state: State<AppState>) -> Result<(), String> {
     let mut inner = clip.inner.lock().unwrap();
     inner.items.clear();
-    inner.secrets.clear();
     state.store.lock().unwrap().clip_delete_all().map_err(|e| e.to_string())?;
     drop(inner);
     let _ = app.emit(EVT_CHANGED, ());
@@ -597,7 +489,6 @@ mod tests {
         let s = ClipSettings::default();
         assert!(!s.enabled);
         assert_eq!(s.retention_days, 7);
-        assert_eq!(s.sensitive, "mask");
         assert!(s.clear_sensitive);
         assert!(s.ignored_apps.contains(&"keepassxc.exe".to_string()));
         assert!(s.ignored_apps.contains(&"1password.exe".to_string()));
@@ -610,7 +501,6 @@ mod tests {
         let custom = ClipSettings {
             enabled: true,
             retention_days: 30,
-            sensitive: "skip".into(),
             clear_sensitive: false,
             ignored_apps: vec!["mybank.exe".into()],
         };
@@ -630,7 +520,6 @@ mod tests {
 
         for bad in [
             ClipSettings { retention_days: 365, ..ClipSettings::default() },
-            ClipSettings { sensitive: "show".into(), ..ClipSettings::default() },
             ClipSettings { ignored_apps: vec!["notepad".into()], ..ClipSettings::default() },
             ClipSettings { ignored_apps: vec!["..\\evil.exe".into()], ..ClipSettings::default() },
             ClipSettings { ignored_apps: (0..51).map(|i| format!("app{i}.exe")).collect(), ..ClipSettings::default() },
@@ -640,33 +529,16 @@ mod tests {
     }
 
     #[test]
-    fn timed_pause_expires_and_secrets_purge() {
+    fn timed_pause_expires() {
         let mut inner = Inner {
             settings: ClipSettings::default(),
             items: Vec::new(),
-            secrets: vec![
-                Secret {
-                    id: -1,
-                    text: SecretText::new("old").unwrap(),
-                    source: None,
-                    created: 0,
-                    expires: Instant::now() - Duration::from_secs(1),
-                },
-                Secret {
-                    id: -2,
-                    text: SecretText::new("new").unwrap(),
-                    source: None,
-                    created: 0,
-                    expires: Instant::now() + Duration::from_secs(60),
-                },
-            ],
-            next_secret_id: -3,
             paused: Some(Some(Instant::now() - Duration::from_secs(1))),
         };
         assert!(!inner.is_paused(), "an elapsed pause ends");
         inner.paused = Some(None);
         assert!(inner.is_paused(), "an open-ended pause holds");
-        assert!(inner.purge_expired());
-        assert_eq!(inner.secrets.iter().map(|s| s.id).collect::<Vec<_>>(), vec![-2]);
+        inner.paused = Some(Some(Instant::now() + Duration::from_secs(60)));
+        assert!(inner.is_paused(), "a pause that hasn't elapsed holds");
     }
 }
