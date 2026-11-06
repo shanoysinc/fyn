@@ -23,6 +23,7 @@
 - **Smart ranking**: match quality, prefix bonus and *frecency* (how often and how recently you open something).
 - **Favorites**: pin apps, reorder them, and open them with <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd>.
 - **Suggestions**: your most-used apps on the home screen.
+- Favorites and suggestions show as a **row of icons** (← → to move) or as a list; choose in Settings.
 - Run as administrator, show in File Explorer, copy path.
 
 ### Built-in tools

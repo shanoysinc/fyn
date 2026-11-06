@@ -25,6 +25,8 @@ pub const SETTING_THEME: &str = "theme";
 const SETTING_AUTOSTART_DEFAULTED: &str = "autostart_defaulted";
 const SEARCH_ENGINES: [&str; 3] = ["google", "duckduckgo", "bing"];
 const THEMES: [&str; 3] = ["system", "light", "dark"];
+pub const SETTING_HOME_LAYOUT: &str = "home_layout";
+const HOME_LAYOUTS: [&str; 2] = ["grid", "list"];
 
 const MAX_QUERY_LEN: usize = 256;
 const MAX_ID_LEN: usize = 2048;
@@ -78,6 +80,8 @@ pub struct Settings {
     search_engine: String,
     /// Fyn's own appearance: "system", "light" or "dark". Never changes the Windows theme.
     theme: String,
+    /// Favorites and Suggestions as a row of icons ("grid") or a "list".
+    home_layout: String,
 }
 
 fn check_id(id: &str) -> Result<(), String> {
@@ -205,12 +209,13 @@ pub fn hide_window(app: AppHandle) {
 
 #[tauri::command]
 pub fn get_settings(app: AppHandle, state: State<AppState>) -> Settings {
-    let (onboarded, search_engine, theme) = {
+    let (onboarded, search_engine, theme, home_layout) = {
         let store = state.store.lock().unwrap();
         (
             store.get_setting(SETTING_ONBOARDED).as_deref() == Some("1"),
             saved_search_engine(&store),
             saved_theme(&store),
+            saved_home_layout(&store),
         )
     };
     Settings {
@@ -222,7 +227,30 @@ pub fn get_settings(app: AppHandle, state: State<AppState>) -> Settings {
         onboarded,
         search_engine,
         theme,
+        home_layout,
     }
+}
+
+/// How Favorites and Suggestions are shown on the home screen ("grid" if unset or unknown).
+fn saved_home_layout(store: &Store) -> String {
+    store
+        .get_setting(SETTING_HOME_LAYOUT)
+        .filter(|l| HOME_LAYOUTS.contains(&l.as_str()))
+        .unwrap_or_else(|| HOME_LAYOUTS[0].to_string())
+}
+
+/// "grid" (a row of icons) or "list".
+#[tauri::command]
+pub fn set_home_layout(state: State<AppState>, layout: String) -> Result<(), String> {
+    if !HOME_LAYOUTS.contains(&layout.as_str()) {
+        return Err("Unknown layout".into());
+    }
+    state
+        .store
+        .lock()
+        .unwrap()
+        .set_setting(SETTING_HOME_LAYOUT, &layout)
+        .map_err(|e| e.to_string())
 }
 
 /// The saved web search engine ("google" if unset or unknown).
@@ -403,6 +431,16 @@ mod tests {
     }
 
     #[test]
+    fn home_layout_defaults_to_grid_and_ignores_unknown_values() {
+        let s = store();
+        assert_eq!(saved_home_layout(&s), "grid");
+        s.set_setting(SETTING_HOME_LAYOUT, "list").unwrap();
+        assert_eq!(saved_home_layout(&s), "list");
+        s.set_setting(SETTING_HOME_LAYOUT, "carousel").unwrap();
+        assert_eq!(saved_home_layout(&s), "grid");
+    }
+
+    #[test]
     fn autostart_is_defaulted_only_once() {
         let s = store();
         assert!(should_default_autostart(&s), "fresh install: turn it on");
@@ -440,8 +478,9 @@ mod tests {
 
     #[test]
     fn allowlists_match_the_ui() {
-        // Keep in sync with SearchEngine / Theme in src/lib/ipc.ts.
+        // Keep in sync with SearchEngine / Theme / HomeLayout in src/lib/ipc.ts.
         assert_eq!(SEARCH_ENGINES, ["google", "duckduckgo", "bing"]);
         assert_eq!(THEMES, ["system", "light", "dark"]);
+        assert_eq!(HOME_LAYOUTS, ["grid", "list"]); // HomeLayout in src/lib/ipc.ts
     }
 }

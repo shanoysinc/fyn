@@ -23,6 +23,7 @@ export const api = {
   setOnboarded: vi.fn(),
   setSearchEngine: vi.fn(),
   setTheme: vi.fn(),
+  setHomeLayout: vi.fn(),
   runSystemCommand: vi.fn(),
   openSettingsPage: vi.fn(),
   openUrl: vi.fn(),

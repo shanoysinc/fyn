@@ -89,6 +89,7 @@ fn main() {
             commands::set_onboarded,
             commands::set_search_engine,
             commands::set_theme,
+            commands::set_home_layout,
             commands::run_system_command,
             commands::open_settings_page,
             commands::open_url,

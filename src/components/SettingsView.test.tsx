@@ -53,6 +53,14 @@ describe("SettingsView", () => {
     expect(radio("System")).toHaveAttribute("aria-checked", "true");
   });
 
+  it("switches favorites & suggestions between icons and a list", async () => {
+    const { user } = await setup();
+    expect(radio("List")).toHaveAttribute("aria-checked", "true"); // fixture default
+    await user.click(radio("Icons"));
+    expect(api.setHomeLayout).toHaveBeenCalledWith("grid");
+    expect(radio("Icons")).toHaveAttribute("aria-checked", "true");
+  });
+
   it("changes the search engine", async () => {
     const { user } = await setup();
     await user.click(radio("DuckDuckGo"));

@@ -66,6 +66,81 @@ describe("home screen", () => {
   });
 });
 
+describe("icon-row layout for favorites and suggestions", () => {
+  const SLACK = { ...CODE, id: "lnk:slack", name: "Slack", pinned: true };
+
+  async function setupGrid() {
+    api.getSettings.mockResolvedValue(makeSettings({ homeLayout: "grid" }));
+    api.getHome.mockResolvedValue(
+      makeHome({
+        favorites: [{ ...CHROME, pinned: true }, SLACK],
+        suggestions: [CODE],
+        applications: [{ ...CHROME, pinned: true }, CODE, SLACK],
+      }),
+    );
+    const ctx = await setup();
+    await waitFor(() => expect(document.querySelectorAll(".tile")).toHaveLength(3));
+    return ctx;
+  }
+
+  const selectedValue = () => document.querySelector('[cmdk-item][data-selected="true"]')?.getAttribute("data-value");
+
+  it("shows favorites and suggestions as icons, applications as a list", async () => {
+    await setupGrid();
+    const groupOf = (heading: string) =>
+      [...document.querySelectorAll<HTMLElement>("[cmdk-group]")].find(
+        (g) => g.querySelector("[cmdk-group-heading]")?.textContent === heading,
+      )!;
+    expect(groupOf("Favorites").querySelectorAll(".tile")).toHaveLength(2);
+    expect(groupOf("Suggestions").querySelectorAll(".tile")).toHaveLength(1);
+    expect(groupOf("Applications").querySelectorAll(".tile")).toHaveLength(0);
+    expect(groupOf("Applications").querySelectorAll(".row")).toHaveLength(3);
+  });
+
+  it("moves with the arrow keys: along a row, between rows, into the list and back", async () => {
+    const { user } = await setupGrid();
+    expect(selectedValue()).toBe("fav:lnk:chrome");
+    await user.keyboard("{ArrowRight}");
+    expect(selectedValue()).toBe("fav:lnk:slack");
+    await user.keyboard("{ArrowRight}"); // stops at the end of the row
+    expect(selectedValue()).toBe("fav:lnk:slack");
+    await user.keyboard("{ArrowDown}"); // column 1 clamps to the single suggestion
+    expect(selectedValue()).toBe("sug:lnk:code");
+    await user.keyboard("{ArrowDown}");
+    expect(selectedValue()).toBe("app:lnk:chrome");
+    await user.keyboard("{ArrowUp}{ArrowUp}"); // back up to the remembered column
+    expect(selectedValue()).toBe("fav:lnk:slack");
+    await user.keyboard("{ArrowLeft}");
+    expect(selectedValue()).toBe("fav:lnk:chrome");
+  });
+
+  it("opens the selected icon with Enter and offers actions on right-click", async () => {
+    const { user } = await setupGrid();
+    await user.keyboard("{ArrowRight}{Enter}");
+    expect(api.launch).toHaveBeenCalledWith("lnk:slack");
+
+    fireEvent.contextMenu(document.querySelector('.tile[data-value="sug:lnk:code"]')!, { clientX: 50, clientY: 50 });
+    await waitFor(() => expect(document.querySelector(".actions__title")).toHaveTextContent("Visual Studio Code"));
+    expect(screen.getByText("Add to Favorites")).toBeInTheDocument();
+  });
+
+  it("Ctrl+1/2 still open favorites", async () => {
+    const { user } = await setupGrid();
+    await user.keyboard("{Control>}2{/Control}");
+    expect(api.launch).toHaveBeenCalledWith("lnk:slack");
+  });
+
+  it("search results are a normal list, and arrows move the text caret again", async () => {
+    api.search.mockResolvedValue([CODE]);
+    const { user, input } = await setupGrid();
+    await user.type(input, "code");
+    await screen.findByText("Applications");
+    expect(document.querySelector(".tile")).toBeNull();
+    await user.keyboard("{ArrowLeft}");
+    expect((input as HTMLInputElement).selectionStart).toBe(3);
+  });
+});
+
 describe("searching", () => {
   it("orders quick results, apps, commands and web searches", async () => {
     api.search.mockResolvedValue([{ ...CODE, matches: [0] }]);

@@ -22,6 +22,8 @@ export interface Home {
 
 export type SearchEngine = "google" | "duckduckgo" | "bing";
 export type Theme = "system" | "light" | "dark";
+/** Favorites and Suggestions as a row of icons ("grid") or a "list". */
+export type HomeLayout = "grid" | "list";
 
 export interface Settings {
   hotkey: string;
@@ -32,6 +34,7 @@ export interface Settings {
   onboarded: boolean;
   searchEngine: SearchEngine;
   theme: Theme;
+  homeLayout: HomeLayout;
 }
 
 export interface PathInfo {
@@ -70,6 +73,7 @@ export const api = {
   setOnboarded: (done: boolean) => invoke<void>("set_onboarded", { done }),
   setSearchEngine: (engine: SearchEngine) => invoke<void>("set_search_engine", { engine }),
   setTheme: (theme: Theme) => invoke<void>("set_theme", { theme }),
+  setHomeLayout: (layout: HomeLayout) => invoke<void>("set_home_layout", { layout }),
   /** Resolves to a message to show the user, if any. */
   runSystemCommand: (command: SystemCommandId) => invoke<string | null>("run_system_command", { command }),
   openSettingsPage: (uri: string) => invoke<void>("open_settings_page", { uri }),

@@ -940,6 +940,7 @@ button {
    frame of the entrance below, or the previous frame flashes before it (flicker). */
 .launcher--primed .search,
 .launcher--primed .row,
+.launcher--primed .tile,
 .launcher--primed .group [cmdk-group-heading],
 .launcher--primed .footer {
   opacity: 0;
@@ -1005,7 +1006,8 @@ button {
   animation-delay: calc(40ms + var(--g, 0) * 50ms);
 }
 
-.launcher--enter .row {
+.launcher--enter .row,
+.launcher--enter .tile {
   animation: rise-in 300ms var(--ease-out) both;
   animation-delay: calc(50ms + var(--g, 0) * 50ms + var(--r, 0) * 18ms);
 }
@@ -1014,14 +1016,14 @@ button {
   animation: fade-in 300ms ease-out 120ms both;
 }
 
-.row:nth-child(2) { --r: 1; }
-.row:nth-child(3) { --r: 2; }
-.row:nth-child(4) { --r: 3; }
-.row:nth-child(5) { --r: 4; }
-.row:nth-child(6) { --r: 5; }
-.row:nth-child(7) { --r: 6; }
-.row:nth-child(8) { --r: 7; }
-.row:nth-child(n + 9) { --r: 8; }
+:is(.row, .tile):nth-child(2) { --r: 1; }
+:is(.row, .tile):nth-child(3) { --r: 2; }
+:is(.row, .tile):nth-child(4) { --r: 3; }
+:is(.row, .tile):nth-child(5) { --r: 4; }
+:is(.row, .tile):nth-child(6) { --r: 5; }
+:is(.row, .tile):nth-child(7) { --r: 6; }
+:is(.row, .tile):nth-child(8) { --r: 7; }
+:is(.row, .tile):nth-child(n + 9) { --r: 8; }
 
 /* Welcome: the logo springs in, then everything else follows in reading order. */
 .welcome > * {
@@ -1124,4 +1126,79 @@ img.app-icon {
 
 img.app-icon--loaded {
   opacity: 1;
+}
+
+/* ---------- icon rows (Favorites / Suggestions, "Icons" layout) ---------- */
+
+.group--tiles [cmdk-group-items] {
+  display: flex;
+  gap: 4px;
+  padding: 2px 2px 4px;
+  overflow-x: auto;
+  scroll-padding: 0 8px;
+  overscroll-behavior-x: contain;
+  scrollbar-width: none; /* a long Favorites row scrolls sideways, without a bar */
+}
+
+.group--tiles [cmdk-group-items]::-webkit-scrollbar {
+  display: none;
+}
+
+.tile {
+  flex: 0 0 86px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 7px;
+  min-width: 0;
+  padding: 12px 6px 9px;
+  border-radius: 12px;
+  transition: background-color 90ms ease-out, box-shadow 90ms ease-out;
+}
+
+.tile:hover {
+  background: var(--hover);
+}
+
+.tile[data-selected="true"] {
+  background: var(--selected);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.tile__icon {
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  transition: transform 160ms var(--ease-spring);
+}
+
+.tile[data-selected="true"] .tile__icon {
+  transform: scale(1.06);
+}
+
+.tile .app-icon,
+.tile .glyph-tile {
+  width: 40px;
+  height: 40px;
+}
+
+.tile .app-icon--fallback {
+  border-radius: 10px;
+  font-size: 17px;
+}
+
+.tile__name {
+  width: 100%;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-align: center;
+  font-size: 12px;
+  color: var(--text-2);
+}
+
+.tile[data-selected="true"] .tile__name {
+  color: var(--text);
+  font-weight: 500;
 }

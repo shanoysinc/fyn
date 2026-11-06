@@ -7,6 +7,7 @@ import { Kbd } from "./components/Kbd";
 import { SettingsView } from "./components/SettingsView";
 import { WelcomeView } from "./components/WelcomeView";
 import { actionFromKey, actionsFor, type ActionId } from "./lib/actions";
+import { gridMove, type ArrowKey } from "./lib/gridNav";
 import {
   appEntry,
   looksLikePath,
@@ -39,6 +40,8 @@ interface Section {
   key: string;
   title: string;
   entries: Entry[];
+  /** Shown as a horizontal row of icons instead of a list. */
+  tiles?: boolean;
 }
 
 interface Results {
@@ -243,12 +246,23 @@ export function App() {
       ].filter((s) => s.entries.length > 0);
     }
     if (!home) return [];
+    const tiles = (settings?.homeLayout ?? "grid") === "grid";
     return [
-      { key: "fav", title: "Favorites", entries: home.favorites.map(appEntry) },
-      { key: "sug", title: "Suggestions", entries: home.suggestions.map(appEntry) },
+      { key: "fav", title: "Favorites", entries: home.favorites.map(appEntry), tiles },
+      { key: "sug", title: "Suggestions", entries: home.suggestions.map(appEntry), tiles },
       { key: "app", title: "Applications", entries: home.applications.map(appEntry) },
     ].filter((s) => s.entries.length > 0);
-  }, [home, results, settings?.searchEngine]);
+  }, [home, results, settings?.searchEngine, settings?.homeLayout]);
+
+  // Visual rows for arrow keys: an icon row is one row; every list item is its own row.
+  const gridRows = useMemo(() => {
+    if (!sections.some((s) => s.tiles)) return null;
+    return sections.flatMap((s) => {
+      const values = s.entries.map((e) => valueOf(s.key, e.id));
+      return s.tiles ? [values] : values.map((v) => [v]);
+    });
+  }, [sections]);
+  const gridColumn = useRef(0);
 
   const byValue = useMemo(() => {
     const map = new Map<string, Entry>();
@@ -421,6 +435,24 @@ export function App() {
   const onKeyDown = (e: React.KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
 
+    // Icon rows: arrows move left/right along a row and up/down between rows.
+    // (Only on the home screen, where the search box is empty, so the caret isn't needed.)
+    if (gridRows && !ctrl && !e.shiftKey && !e.altKey && /^Arrow(Left|Right|Up|Down)$/.test(e.key)) {
+      const move = gridMove(gridRows, selected, e.key as ArrowKey, gridColumn.current);
+      if (move) {
+        e.preventDefault();
+        gridColumn.current = move.column;
+        setSelected(move.value);
+        // Bring it into view, including sideways in a long Favorites row.
+        requestAnimationFrame(() =>
+          listRef.current
+            ?.querySelector(`[cmdk-item][data-value="${CSS.escape(move.value)}"]`)
+            ?.scrollIntoView({ block: "nearest", inline: "nearest" }),
+        );
+        return;
+      }
+    }
+
     if (ctrl && e.key.toLowerCase() === "k") {
       e.preventDefault();
       if (panelActions.length > 1) {
@@ -530,26 +562,38 @@ export function App() {
               <Command.Group
                 key={s.key}
                 heading={s.title}
-                className="group"
+                className={`group ${s.tiles ? "group--tiles" : ""}`}
                 style={{ "--g": i } as React.CSSProperties}
               >
-                {s.entries.map((entry) => (
-                  <Row
-                    key={entry.id}
-                    value={valueOf(s.key, entry.id)}
-                    entry={entry}
-                    onRun={() => void runEntry(entry)}
-                    // Everything in Favorites is a favorite; the star only adds noise there.
-                    showStar={s.key !== "fav"}
-                    onContextMenu={(e) => {
-                      // Right-click: select the row and open its actions at the pointer.
-                      e.preventDefault();
-                      setSelected(valueOf(s.key, entry.id));
-                      setPanelAnchor({ x: e.clientX, y: e.clientY });
-                      setPanel("actions");
-                    }}
-                  />
-                ))}
+                {s.entries.map((entry) => {
+                  const value = valueOf(s.key, entry.id);
+                  const onContextMenu = (e: React.MouseEvent) => {
+                    // Right-click: select the item and open its actions at the pointer.
+                    e.preventDefault();
+                    setSelected(value);
+                    setPanelAnchor({ x: e.clientX, y: e.clientY });
+                    setPanel("actions");
+                  };
+                  return s.tiles ? (
+                    <Tile
+                      key={entry.id}
+                      value={value}
+                      entry={entry}
+                      onRun={() => void runEntry(entry)}
+                      onContextMenu={onContextMenu}
+                    />
+                  ) : (
+                    <Row
+                      key={entry.id}
+                      value={value}
+                      entry={entry}
+                      onRun={() => void runEntry(entry)}
+                      // Everything in Favorites is a favorite; the star only adds noise there.
+                      showStar={s.key !== "fav"}
+                      onContextMenu={onContextMenu}
+                    />
+                  );
+                })}
               </Command.Group>
             ))}
           </Command.List>
@@ -662,6 +706,18 @@ const Row = memo(function Row({ entry, value, onRun, onContextMenu, showStar }: 
       )}
       <span className="row__kind">{entry.subtitle}</span>
       <OpenIcon />
+    </Command.Item>
+  );
+});
+
+/** An app in a horizontal icon row (Favorites / Suggestions in the "grid" layout). */
+const Tile = memo(function Tile({ entry, value, onRun, onContextMenu }: Omit<RowProps, "showStar">) {
+  return (
+    <Command.Item value={value} className="tile" onSelect={onRun} onContextMenu={onContextMenu} title={entry.title}>
+      <span className="tile__icon">
+        <EntryIconView icon={entry.icon} />
+      </span>
+      <span className="tile__name">{entry.title}</span>
     </Command.Item>
   );
 });

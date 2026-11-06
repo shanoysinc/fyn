@@ -43,6 +43,7 @@ export function makeSettings(over: Partial<Settings> = {}): Settings {
     onboarded: true,
     searchEngine: "google",
     theme: "system",
+    homeLayout: "list",
     ...over,
   };
 }

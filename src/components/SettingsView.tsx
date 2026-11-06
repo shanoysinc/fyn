@@ -8,6 +8,7 @@ import {
   on,
   type SearchEngine,
   type Settings,
+  type HomeLayout,
   type Theme,
   type UpdateInfo,
 } from "../lib/ipc";
@@ -113,6 +114,16 @@ export function SettingsView({ onBack, onShowWelcome, update, onUpdate }: Props)
       setSettings({ ...settings, theme });
     } catch (e) {
       applyTheme(settings.theme);
+      setError(errorMessage(e));
+    }
+  };
+
+  const setLayout = async (homeLayout: HomeLayout) => {
+    if (!settings || settings.homeLayout === homeLayout) return;
+    try {
+      await api.setHomeLayout(homeLayout);
+      setSettings({ ...settings, homeLayout });
+    } catch (e) {
       setError(errorMessage(e));
     }
   };
@@ -224,6 +235,21 @@ export function SettingsView({ onBack, onShowWelcome, update, onUpdate }: Props)
               { value: "dark", label: "Dark" },
             ]}
             onChange={(v) => void changeTheme(v as Theme)}
+          />
+        </section>
+
+        <section className="setting">
+          <div>
+            <div className="setting__title">Favorites &amp; suggestions</div>
+            <div className="setting__desc">Show them as a row of icons or as a list on the home screen.</div>
+          </div>
+          <Segmented
+            value={settings?.homeLayout ?? null}
+            options={[
+              { value: "grid", label: "Icons" },
+              { value: "list", label: "List" },
+            ]}
+            onChange={(v) => void setLayout(v as HomeLayout)}
           />
         </section>
 
