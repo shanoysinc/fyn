@@ -29,7 +29,7 @@ export const api = {
   openUrl: vi.fn(),
   checkPath: vi.fn(),
   openPath: vi.fn(),
-  suspendAutoHide: vi.fn(),
+  pickScreenColor: vi.fn(),
   uiReady: vi.fn(),
   checkForUpdate: vi.fn(),
   installUpdate: vi.fn(),

@@ -80,7 +80,8 @@ export const api = {
   openUrl: (url: string) => invoke<void>("open_url", { url }),
   checkPath: (path: string) => invoke<PathInfo | null>("check_path", { path }),
   openPath: (path: string, reveal = false) => invoke<void>("open_path", { path, reveal }),
-  suspendAutoHide: (suspended: boolean) => invoke<void>("suspend_auto_hide", { suspended }),
+  /** Eyedropper: hides Fyn until the next click anywhere; resolves to "#RRGGBB" or null if cancelled. */
+  pickScreenColor: () => invoke<string | null>("pick_screen_color"),
   /** First frame with data is drawn; the backend shows the window on a manual start and says what it did. */
   uiReady: () => invoke<"showing" | "visible" | "hidden">("ui_ready"),
   checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),

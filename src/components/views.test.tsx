@@ -151,43 +151,49 @@ describe("ColorView", () => {
     expect(screen.getByText("rgb(0, 0, 255)")).toBeInTheDocument();
   });
 
-  it("explains when screen picking isn't available", async () => {
+  it("Ctrl+P picks a colour from the screen and selects HEX ready to copy", async () => {
+    api.pickScreenColor.mockResolvedValue("#123456");
+    const user = userWithClipboard();
+    render(<ColorView onBack={vi.fn()} />);
+    input().focus();
+    await user.keyboard("{Control>}p{/Control}");
+    await waitFor(() => expect(input()).toHaveValue("#123456"));
+    expect(api.pickScreenColor).toHaveBeenCalledTimes(1);
+    expect(toast()).toBe("Picked #123456. Press ↵ to copy");
+    // Regression: typing the picked colour used to jump the selection back to "Pick from Screen".
+    await waitFor(() => expect(document.querySelector('[cmdk-item][data-selected="true"]')).toHaveAttribute("data-value", "hex"));
+    expect(document.querySelectorAll(".color-chip")).toHaveLength(1); // remembered
+    await user.keyboard("{Enter}");
+    expect(clipboard.writeText).toHaveBeenCalledWith("#123456");
+  });
+
+  it("Enter on 'Pick from Screen' starts the picker too", async () => {
+    api.pickScreenColor.mockResolvedValue("#ABCDEF");
     const user = userEvent.setup();
     render(<ColorView onBack={vi.fn()} />);
     input().focus();
     await user.keyboard("{Enter}"); // "Pick from Screen" is selected first
-    await waitFor(() => expect(toast()).toBe("Picking from the screen isn't supported here"));
-    expect(api.suspendAutoHide).not.toHaveBeenCalled();
+    await waitFor(() => expect(input()).toHaveValue("#ABCDEF"));
   });
 
-  it("picks from the screen without letting the launcher hide", async () => {
-    const open = vi.fn().mockResolvedValue({ sRGBHex: "#123456" });
-    vi.stubGlobal("EyeDropper", class { open = open; });
-    try {
-      const user = userEvent.setup();
-      render(<ColorView onBack={vi.fn()} />);
-      input().focus();
-      await user.keyboard("{Control>}p{/Control}");
-      await waitFor(() => expect(input()).toHaveValue("#123456"));
-      expect(api.suspendAutoHide).toHaveBeenNthCalledWith(1, true);
-      expect(api.suspendAutoHide).toHaveBeenLastCalledWith(false);
-      expect(document.querySelectorAll(".color-chip")).toHaveLength(1); // remembered
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it("cancelling (Esc / right-click) leaves the colour as it was", async () => {
+    api.pickScreenColor.mockResolvedValue(null);
+    const user = userEvent.setup();
+    render(<ColorView initial="#ff0000" onBack={vi.fn()} />);
+    input().focus();
+    await user.keyboard("{Control>}p{/Control}");
+    await waitFor(() => expect(api.pickScreenColor).toHaveBeenCalled());
+    expect(input()).toHaveValue("#ff0000");
+    expect(toast()).toBeNull();
   });
 
-  it("re-enables auto-hide even if picking is cancelled", async () => {
-    vi.stubGlobal("EyeDropper", class { open = vi.fn().mockRejectedValue(new Error("AbortError")); });
-    try {
-      const user = userEvent.setup();
-      render(<ColorView onBack={vi.fn()} />);
-      input().focus();
-      await user.keyboard("{Control>}p{/Control}");
-      await waitFor(() => expect(api.suspendAutoHide).toHaveBeenLastCalledWith(false));
-    } finally {
-      vi.unstubAllGlobals();
-    }
+  it("shows picker errors", async () => {
+    api.pickScreenColor.mockRejectedValue("Already picking a color");
+    const user = userEvent.setup();
+    render(<ColorView onBack={vi.fn()} />);
+    input().focus();
+    await user.keyboard("{Control>}p{/Control}");
+    await waitFor(() => expect(toast()).toBe("Already picking a color"));
   });
 
   it("Esc clears, then goes back", async () => {

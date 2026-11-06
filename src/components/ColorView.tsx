@@ -7,11 +7,6 @@ import { Glyph } from "./EntryIconView";
 import { Kbd } from "./Kbd";
 import { ViewHeader } from "./ViewHeader";
 
-interface EyeDropperResult {
-  sRGBHex: string;
-}
-type EyeDropperCtor = new () => { open: () => Promise<EyeDropperResult> };
-
 const DEFAULT = "#7C3AED";
 
 export function ColorView({ initial, onBack }: { initial?: string; onBack: () => void }) {
@@ -53,28 +48,26 @@ export function ColorView({ initial, onBack }: { initial?: string; onBack: () =>
     [hex, remember],
   );
 
+  // Native eyedropper (Rust): Fyn hides, the next click anywhere picks that pixel, Fyn
+  // comes back. Esc or right-click cancels. (The browser EyeDropper API isn't available
+  // in WebView2, so this doesn't rely on it.)
   const pick = useCallback(async () => {
-    const EyeDropper = (window as unknown as { EyeDropper?: EyeDropperCtor }).EyeDropper;
-    if (!EyeDropper) {
-      setToast({ text: "Picking from the screen isn't supported here", error: true });
-      return;
-    }
-    // Clicking elsewhere on screen would normally hide the launcher.
-    await api.suspendAutoHide(true).catch(() => {});
     try {
-      const { sRGBHex } = await new EyeDropper().open();
-      const picked = parseColor(sRGBHex);
-      if (picked) {
-        const value = toHex(picked);
+      const picked = await api.pickScreenColor();
+      const parsed = picked ? parseColor(picked) : null;
+      if (parsed) {
+        const value = toHex(parsed);
         setInput(value);
-        setColor(picked);
+        setColor(parsed);
         remember(value);
-        setSelected("hex");
+        // cmdk re-selects the first item ("Pick from Screen") when the input text changes,
+        // so select HEX after that settles; otherwise ↵ would start the picker again.
+        requestAnimationFrame(() => setSelected("hex"));
+        setToast({ text: `Picked ${value}. Press ↵ to copy` });
       }
-    } catch {
-      // Cancelled with Esc.
+    } catch (e) {
+      setToast({ text: errorMessage(e), error: true });
     } finally {
-      await api.suspendAutoHide(false).catch(() => {});
       inputRef.current?.focus();
     }
   }, [remember]);

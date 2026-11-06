@@ -61,7 +61,7 @@
 | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>C</kbd> | Copy path / URL |
 | <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd> | Open favorite N |
 | <kbd>Ctrl</kbd>+<kbd>,</kbd> | Settings |
-| <kbd>Ctrl</kbd>+<kbd>P</kbd> (color picker) | Pick a color from the screen |
+| <kbd>Ctrl</kbd>+<kbd>P</kbd> (inside the color picker: type `color`) | Eyedropper: Fyn hides and the pointer becomes a crosshair; click anywhere to grab that color (<kbd>Esc</kbd> cancels) |
 | <kbd>Esc</kbd> | Clear search, go back, then hide |
 
 ## Install
@@ -171,6 +171,7 @@ src/
 - **No shell interpolation.** Apps and paths open with `ShellExecuteW`; Explorer gets a single quoted absolute path and rejects quotes; SQL is parameterised.
 - **Strict CSP.** No `eval`, no remote content. The asset protocol can read only `$APPLOCALDATA/icons/**`.
 - **Run as administrator** always goes through UAC. Fyn never runs elevated itself.
+- **The eyedropper** captures the mouse and Esc only while you're picking a color: it takes the one click (so it doesn't reach the app underneath), then removes the capture. It gives up after 30 seconds.
 - **Network use is limited to the update check.** Updates are verified against the bundled public key before they install.
 - **Release hardening.** No dev tools, no context menu, reload disabled, no dev menu.
 

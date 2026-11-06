@@ -398,9 +398,12 @@ pub fn open_path(app: AppHandle, path: String, reveal: bool) -> Result<(), Strin
     Ok(())
 }
 
-#[tauri::command]
-pub fn suspend_auto_hide(suspended: bool) {
-    window::suspend_auto_hide(suspended);
+/// Eyedropper: hide Fyn, wait for a click anywhere on screen, return that pixel's colour
+/// as `#RRGGBB` (None if cancelled with Esc / right-click or after 30 s). Runs off the
+/// main thread because it waits for the user.
+#[tauri::command(async)]
+pub fn pick_screen_color(app: AppHandle) -> Result<Option<String>, String> {
+    crate::picker::pick(&app)
 }
 
 /// The UI has rendered its first frame with data; show the window if startup asked to.

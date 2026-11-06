@@ -6,6 +6,7 @@ mod hotkey;
 mod icons;
 mod indexer;
 mod launcher;
+mod picker;
 mod search;
 mod state;
 mod store;
@@ -60,6 +61,7 @@ fn main() {
             hotkey::register_initial(&handle, &hotkey);
             tray::create(&handle)?;
             window::install(&handle);
+            picker::restore_cursors(); // in case a previous run was killed mid-pick
             window::apply_theme(&handle, &theme);
             state::refresh(&handle);
             watcher::start(&handle);
@@ -95,7 +97,7 @@ fn main() {
             commands::open_url,
             commands::check_path,
             commands::open_path,
-            commands::suspend_auto_hide,
+            commands::pick_screen_color,
             commands::ui_ready,
             commands::check_for_update,
             commands::install_update,
