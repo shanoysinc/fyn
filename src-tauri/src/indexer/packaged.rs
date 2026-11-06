@@ -1,7 +1,6 @@
 //! Packaged (Store / MSIX) app discovery via the `shell:AppsFolder` virtual folder.
 
 use windows::core::PWSTR;
-use windows::Win32::Foundation::S_OK;
 use windows::Win32::System::Com::CoTaskMemFree;
 use windows::Win32::UI::Shell::{
     BHID_EnumItems, FOLDERID_AppsFolder, IEnumShellItems, IShellItem, SHGetKnownFolderItem,
@@ -24,7 +23,7 @@ unsafe fn scan_inner() -> windows::core::Result<Vec<App>> {
     loop {
         let mut slot: [Option<IShellItem>; 1] = [None];
         let mut fetched = 0u32;
-        if items.Next(&mut slot, Some(&mut fetched)) != S_OK || fetched == 0 {
+        if items.Next(&mut slot, Some(&mut fetched)).is_err() || fetched == 0 {
             break;
         }
         let Some(item) = slot[0].take() else { break };
