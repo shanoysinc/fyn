@@ -182,6 +182,23 @@ describe("3 rows on the home screen, then View all", () => {
     expect(api.hide).not.toHaveBeenCalled();
   });
 
+  it("going to View all and back keeps the screen in place and only animates the list", async () => {
+    const { user } = await setupMany("list");
+    const screenEl = document.querySelector(".screen");
+    await user.click(screen.getByRole("button", { name: /View all 30/, hidden: true }));
+    await screen.findByPlaceholderText("Filter favorites…");
+    // Same screen element (no remount, so no full-screen slide)…
+    expect(document.querySelector(".screen")).toBe(screenEl);
+    expect(screenEl).not.toHaveClass("screen--forward");
+    // …while the list content plays its swap animation.
+    expect(document.querySelector(".list")).toHaveClass("list--swap");
+
+    await user.keyboard("{Escape}");
+    await screen.findByPlaceholderText(/Search apps/);
+    expect(document.querySelector(".screen")).toBe(screenEl);
+    expect(screenEl).not.toHaveClass("screen--back");
+  });
+
   it("keyboard route: the View All Favorites command", async () => {
     const { user, input } = await setupMany("list");
     await user.type(input, "view all fav");

@@ -1239,3 +1239,21 @@ img.app-icon--loaded {
 .view-all:hover svg {
   transform: translateX(2px);
 }
+
+/* Home ↔ "View all": the list content fades and rises in; the search bar and footer
+   stay still. Items settle quickly one after another (--r = position in its group). */
+.list--swap [cmdk-group-heading],
+.list--swap .empty {
+  animation: fade-in 180ms ease-out both;
+}
+
+.list--swap :is(.row, .tile) {
+  animation: rise-in 240ms var(--ease-out) both;
+  animation-delay: calc(var(--r, 0) * 14ms);
+}
+
+/* The search icon and the back button swap with a quick fade instead of popping. */
+.search > .back-btn,
+.search > .search__icon {
+  animation: fade-in 160ms ease-out;
+}

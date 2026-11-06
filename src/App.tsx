@@ -1,5 +1,5 @@
 import { Command } from "cmdk";
-import { lazy, memo, Suspense, useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActionPanel, type PanelAction } from "./components/ActionPanel";
 import { ColorView } from "./components/ColorView";
 import { EntryIconView, GEAR_PATH } from "./components/EntryIconView";
@@ -96,6 +96,8 @@ export function App() {
   const [nav, setNav] = useState<"forward" | "back" | "intro" | "none">("none");
   const launcherRef = useRef<HTMLDivElement>(null);
   const enterTimer = useRef<number | undefined>(undefined);
+  const viewRef = useRef(view);
+  viewRef.current = view;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchSeq = useRef(0);
@@ -117,7 +119,9 @@ export function App() {
   const openView = useCallback((next: View, arg?: string) => {
     setPanel(null);
     setViewArg(arg);
-    setNav(next === "welcome" ? "intro" : "forward");
+    // Home ↔ "View all" share the same screen (search bar + list + footer): only the
+    // list content changes, so no screen slide; see the list swap animation below.
+    setNav(next === "welcome" ? "intro" : next === "collection" && viewRef.current === "root" ? "none" : "forward");
     if (next === "collection") setQuery(""); // the box filters the collection from scratch
     setView(next);
   }, []);
@@ -328,6 +332,23 @@ export function App() {
   }, [sections]);
   const gridColumn = useRef(0);
 
+  // Home ↔ "View all": the search bar and footer stay put while the list content fades
+  // and rises in (applied before paint so the new items never flash in unanimated).
+  const prevView = useRef(view);
+  useLayoutEffect(() => {
+    const from = prevView.current;
+    prevView.current = view;
+    const swap = (from === "root" && view === "collection") || (from === "collection" && view === "root");
+    const el = listRef.current;
+    if (!swap || !el) return;
+    el.scrollTop = 0;
+    el.classList.remove("list--swap");
+    void el.offsetWidth; // restart the animation
+    el.classList.add("list--swap");
+    const t = window.setTimeout(() => el.classList.remove("list--swap"), 500);
+    return () => window.clearTimeout(t);
+  }, [view]);
+
   const byValue = useMemo(() => {
     const map = new Map<string, Entry>();
     for (const s of sections) for (const entry of s.entries) map.set(valueOf(s.key, entry.id), entry);
@@ -499,7 +520,7 @@ export function App() {
   }, []);
 
   const back = useCallback(() => {
-    setNav("back");
+    setNav(viewRef.current === "collection" ? "none" : "back"); // see openView
     setView("root");
     setQuery(""); // e.g. the "View all" filter text means nothing on the home screen
     loadSettings();
@@ -579,7 +600,8 @@ export function App() {
   // keyed by view so each new screen plays its entrance.
   return (
     <div className="launcher" ref={launcherRef}>
-      <div key={view} className={`screen screen--${nav}`}>
+      {/* Home and "View all" are one screen (same key): only their list content swaps. */}
+      <div key={view === "collection" ? "root" : view} className={`screen screen--${nav}`}>
         {view === "settings" ? (
           <SettingsView
             onBack={back}
