@@ -101,10 +101,22 @@ export function App() {
     setView(next);
   }, []);
 
+  // Hide the animated parts while the window is hidden, so the first frame Windows shows on
+  // the next open is already the start of the entrance (otherwise the old, fully drawn
+  // frame flashes before the animation resets it, which looks like a flicker).
+  const primeEnter = useCallback(() => {
+    const el = launcherRef.current;
+    if (!el) return;
+    window.clearTimeout(enterTimer.current);
+    el.classList.remove("launcher--enter");
+    el.classList.add("launcher--primed");
+  }, []);
+
   // Replay the "open" entrance each time the window is shown (it's never recreated).
   const playEnter = useCallback(() => {
     const el = launcherRef.current;
     if (!el) return;
+    el.classList.remove("launcher--primed");
     el.classList.remove("launcher--enter");
     void el.offsetWidth; // restart the CSS animations
     el.classList.add("launcher--enter");
@@ -178,6 +190,7 @@ export function App() {
         setConfirming(null);
         setNav("none");
         setView("root");
+        primeEnter();
         listRef.current?.scrollTo({ top: 0 });
       }),
       on(events.appsChanged, refresh),
@@ -185,7 +198,7 @@ export function App() {
       on<UpdateInfo>(events.updateAvailable, setUpdate),
     ];
     return () => offs.forEach((off) => off());
-  }, [loadHome, loadSettings, refresh, focusInput, openView, playEnter]);
+  }, [loadHome, loadSettings, refresh, focusInput, openView, playEnter, primeEnter]);
 
   const sections: Section[] = useMemo(() => {
     if (results) {

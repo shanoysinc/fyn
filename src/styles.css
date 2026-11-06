@@ -933,6 +933,15 @@ button {
    its contents do. All of this is disabled by "reduce motion" above.
    ===================================================================== */
 
+/* Set while the window is hidden: the first frame shown on open must match the first
+   frame of the entrance below, or the previous frame flashes before it (flicker). */
+.launcher--primed .search,
+.launcher--primed .row,
+.launcher--primed .group [cmdk-group-heading],
+.launcher--primed .footer {
+  opacity: 0;
+}
+
 .screen {
   position: relative;
   display: flex;
