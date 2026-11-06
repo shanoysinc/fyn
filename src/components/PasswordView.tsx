@@ -57,12 +57,45 @@ function useWordlist() {
   const [words, setWords] = useState<string[]>([]);
   useEffect(() => {
     let live = true;
-    void import("diceware-wordlist-en-eff").then((m) => live && setWords(Object.values(m.default)));
+    let attempt = 0;
+    const load = () => {
+      void import("diceware-wordlist-en-eff")
+        .then((m) => {
+          if (!live) return;
+          const record = (m.default ?? m) as Record<string, unknown>;
+          const list = Object.values(record).filter((w): w is string => typeof w === "string" && w.length > 0);
+          if (list.length) setWords(list);
+          else if (++attempt < 5) window.setTimeout(load, 400);
+        })
+        .catch(() => {
+          if (live && ++attempt < 5) window.setTimeout(load, 400);
+        });
+    };
+    load();
     return () => {
       live = false;
     };
   }, []);
   return words;
+}
+
+/** Keep each word intact. Colour only the separator and any added digit. */
+function PassphraseText({ value, separator }: { value: string; separator: string }) {
+  const parts = separator ? value.split(separator) : [value];
+  return parts.map((word, i) => (
+    <span key={i} className="pw__word">
+      {i > 0 && <span className="pw__sep">{separator === " " ? "\u00a0" : separator}</span>}
+      {[...word].map((c, j) =>
+        charKind(c) === "letter" ? (
+          <span key={j}>{c}</span>
+        ) : (
+          <span key={j} className={`pw__tone pw__tone--${charKind(c)}`}>
+            {c}
+          </span>
+        ),
+      )}
+    </span>
+  ));
 }
 
 export function PasswordView({ onBack }: { onBack: () => void }) {
@@ -164,17 +197,23 @@ export function PasswordView({ onBack }: { onBack: () => void }) {
         <section className={`pw__card ${copied ? "pw__card--copied" : ""}`} aria-live="polite">
           <div className={`pw__value ${mode === "passphrase" ? "pw__value--phrase" : ""}`} data-testid="password" key={generation}>
             {value ? (
-              chars.map((c, i) => (
-                <span
-                  key={i}
-                  className={`pw__ch pw__ch--${charKind(c)}${c === " " ? " pw__ch--space" : ""}`}
-                  style={{ "--i": Math.min(i, 24) } as React.CSSProperties}
-                >
-                  {c}
-                </span>
-              ))
+              mode === "passphrase" ? (
+                <PassphraseText value={value} separator={passphrase.separator} />
+              ) : (
+                chars.map((c, i) => (
+                  <span key={i} className={`pw__ch pw__ch--${charKind(c)}`} style={{ "--i": Math.min(i, 24) } as React.CSSProperties}>
+                    {c}
+                  </span>
+                ))
+              )
             ) : (
-              <span className="pw__placeholder">{noSets ? "Pick at least one kind of character" : "…"}</span>
+              <span className="pw__placeholder">
+                {mode === "passphrase" && words.length === 0
+                  ? "Loading words…"
+                  : noSets
+                    ? "Pick at least one kind of character"
+                    : "…"}
+              </span>
             )}
           </div>
           <div className="pw__card-actions">

@@ -2716,9 +2716,13 @@ img.app-icon--loaded {
   display: flex;
   flex-wrap: wrap;
   align-items: center;
+  align-content: center;
   justify-content: center;
-  min-height: 52px;
+  /* Tall enough for a full passphrase or a 64-character password, so a
+     wrap onto the next line never moves the controls underneath. */
+  height: 100px;
   padding: 2px 56px;
+  overflow: hidden;
   font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
   font-size: 20px;
   font-weight: 650;
@@ -2733,7 +2737,32 @@ img.app-icon--loaded {
   font-family: var(--font);
   font-size: 22px;
   font-weight: 650;
-  letter-spacing: -0.015em;
+  letter-spacing: -0.02em;
+  column-gap: 0;
+  row-gap: 2px;
+}
+
+/* A word never breaks in the middle; the line breaks before the next word. */
+.pw__word {
+  display: inline-flex;
+  flex: none;
+  white-space: nowrap;
+}
+
+.pw__sep,
+.pw__tone--symbol {
+  color: light-dark(#e11d48, #fb7185);
+}
+
+.pw__tone--digit {
+  color: light-dark(#0f766e, #5eead4);
+}
+
+.mono-sep {
+  min-width: 32px;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 15px;
+  line-height: 1;
 }
 
 .pw__ch {
