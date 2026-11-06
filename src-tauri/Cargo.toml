@@ -1,6 +1,6 @@
 [package]
 name = "fyn"
-version = "0.1.1"
+version = "0.1.2"
 description = "Fyn – a fast, keyboard-first launcher for Windows"
 edition = "2021"
 license = "MIT"
