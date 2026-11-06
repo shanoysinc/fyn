@@ -9,18 +9,34 @@ function tint(name: string) {
   return TINTS[h % TINTS.length];
 }
 
+/** Icons that have loaded once; they appear instantly afterwards (no fade while typing). */
+const seen = new Set<string>();
+
+/**
+ * App icon that never "pops": the first time an image loads it fades in, and the
+ * coloured letter is only used when there's no icon at all or it fails to load.
+ * (Showing the letter first and swapping it for the image made rows flash on startup.)
+ */
 export const AppIcon = memo(function AppIcon({ item }: { item: Pick<Item, "icon" | "name"> }) {
-  const [failed, setFailed] = useState(false);
-  if (item.icon && !failed) {
+  const [failed, setFailed] = useState<string | null>(null);
+  const [loaded, setLoaded] = useState<string | null>(null);
+
+  if (item.icon && failed !== item.icon) {
+    const icon = item.icon;
+    const ready = loaded === icon || seen.has(icon);
     return (
       <img
-        className="app-icon"
-        src={iconUrl(item.icon)}
+        className={`app-icon ${ready ? "app-icon--loaded" : ""}`}
+        src={iconUrl(icon)}
         alt=""
         loading="lazy"
         decoding="async"
         draggable={false}
-        onError={() => setFailed(true)}
+        onLoad={() => {
+          seen.add(icon);
+          setLoaded(icon);
+        }}
+        onError={() => setFailed(icon)}
       />
     );
   }

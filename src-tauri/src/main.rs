@@ -65,9 +65,10 @@ fn main() {
             watcher::start(&handle);
             updater::check_in_background(&handle);
 
-            // Show the launcher on a manual start so the user knows it's running.
+            // Show the launcher on a manual start so the user knows it's running, once the
+            // UI has drawn its first frame (no empty panel, no list popping in).
             if !std::env::args().any(|a| a == hotkey::AUTOSTART_FLAG) {
-                window::show(&handle);
+                window::show_when_ready(&handle);
             }
             Ok(())
         })
@@ -93,6 +94,7 @@ fn main() {
             commands::check_path,
             commands::open_path,
             commands::suspend_auto_hide,
+            commands::ui_ready,
             commands::check_for_update,
             commands::install_update,
         ])

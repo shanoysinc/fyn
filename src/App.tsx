@@ -178,7 +178,8 @@ export function App() {
   useEffect(() => {
     loadHome();
     loadSettings(true);
-    playEnter();
+    // Start hidden; the entrance plays once the list exists and the window is on screen.
+    primeEnter();
     const offs = [
       on(events.shown, () => {
         loadHome();
@@ -203,6 +204,26 @@ export function App() {
     ];
     return () => offs.forEach((off) => off());
   }, [loadHome, loadSettings, refresh, focusInput, openView, playEnter, primeEnter]);
+
+  // First load: once apps and settings are in and that frame is painted (still hidden),
+  // tell the backend. On a manual start it shows the window now, and the "shown" event
+  // plays the entrance with the whole list already in place: no empty panel, no rows
+  // popping in mid-animation.
+  const readySent = useRef(false);
+  useEffect(() => {
+    if (readySent.current || !home || !settings) return;
+    readySent.current = true;
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        api
+          .uiReady()
+          .then((state) => {
+            if (state === "visible") playEnter(); // e.g. a dev reload: no "shown" event comes
+          })
+          .catch(() => playEnter());
+      }),
+    );
+  }, [home, settings, playEnter]);
 
   const sections: Section[] = useMemo(() => {
     if (results) {
@@ -632,8 +653,8 @@ const Row = memo(function Row({ entry, value, onRun, onContextMenu }: RowProps) 
         <Highlight text={entry.title} matches={entry.matches ?? []} />
       </span>
       {entry.app?.pinned && (
-        <span className="row__pin" title="Favorite">
-          ★
+        <span className="row__pin" title="Favorite" aria-label="Favorite">
+          <StarIcon />
         </span>
       )}
       <span className="row__kind">{entry.subtitle}</span>
@@ -658,6 +679,21 @@ function Highlight({ text, matches }: { text: string; matches: number[] }) {
     <>
       {parts.map((p, i) => (p.m ? <mark key={i}>{p.s}</mark> : <span key={i}>{p.s}</span>))}
     </>
+  );
+}
+
+/** Rounded five-point star for favorites (filled, with a soft outline for contrast). */
+function StarIcon() {
+  return (
+    <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden>
+      <path
+        d="M11.1 2.9a1 1 0 0 1 1.8 0l2.4 4.9 5.4.8a1 1 0 0 1 .6 1.7l-3.9 3.8.9 5.4a1 1 0 0 1-1.5 1l-4.8-2.5-4.8 2.5a1 1 0 0 1-1.5-1l.9-5.4-3.9-3.8a1 1 0 0 1 .6-1.7l5.4-.8Z"
+        fill="currentColor"
+        stroke="currentColor"
+        strokeWidth="1"
+        strokeLinejoin="round"
+      />
+    </svg>
   );
 }
 

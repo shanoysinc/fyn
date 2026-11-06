@@ -14,6 +14,39 @@ pub const EVT_OPEN_SETTINGS: &str = "fyn://open-settings";
 /// screen doesn't hide the launcher.
 static AUTO_HIDE_SUSPENDED: AtomicBool = AtomicBool::new(false);
 
+/// A manual start wants the window shown, but only once the UI has drawn its first
+/// frame; showing it earlier flashes an empty panel and then pops the list in.
+static SHOW_WHEN_READY: AtomicBool = AtomicBool::new(false);
+/// If the UI never reports ready (e.g. it crashed), show anyway after this long.
+const READY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(3);
+
+/// Show the launcher as soon as the UI reports it has rendered (see [`ui_ready`]).
+pub fn show_when_ready(app: &AppHandle) {
+    SHOW_WHEN_READY.store(true, Ordering::SeqCst);
+    let app = app.clone();
+    std::thread::spawn(move || {
+        std::thread::sleep(READY_TIMEOUT);
+        if SHOW_WHEN_READY.swap(false, Ordering::SeqCst) {
+            show(&app);
+        }
+    });
+}
+
+/// Called by the UI once its first frame with data is drawn. Tells it what happens next:
+/// `"showing"` (we show it now; the shown event plays the entrance), `"visible"` (already
+/// on screen, e.g. after a dev reload, so the UI should play it itself) or `"hidden"`
+/// (started at login; the entrance plays on the first open).
+pub fn ui_ready(app: &AppHandle) -> &'static str {
+    if SHOW_WHEN_READY.swap(false, Ordering::SeqCst) {
+        show(app);
+        return "showing";
+    }
+    match main_window(app).and_then(|w| w.is_visible().ok()) {
+        Some(true) => "visible",
+        _ => "hidden",
+    }
+}
+
 fn main_window(app: &AppHandle) -> Option<WebviewWindow> {
     app.get_webview_window("main")
 }

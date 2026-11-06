@@ -224,8 +224,11 @@ button {
 }
 
 .row__pin {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
   color: #f5a524;
-  font-size: 12px;
+  filter: drop-shadow(0 1px 1px rgba(180, 110, 0, 0.35));
 }
 
 .row__kind {
@@ -1111,4 +1114,14 @@ button {
 
 .color-view__swatch {
   transition: background 220ms var(--ease-out), color 220ms var(--ease-out);
+}
+
+/* App icons fade in the first time they load instead of popping in. */
+img.app-icon {
+  opacity: 0;
+  transition: opacity 180ms ease-out;
+}
+
+img.app-icon--loaded {
+  opacity: 1;
 }

@@ -29,6 +29,7 @@ export const api = {
   checkPath: vi.fn(),
   openPath: vi.fn(),
   suspendAutoHide: vi.fn(),
+  uiReady: vi.fn(),
   checkForUpdate: vi.fn(),
   installUpdate: vi.fn(),
 } satisfies Record<keyof typeof Ipc.api, unknown>;

@@ -345,6 +345,12 @@ pub fn suspend_auto_hide(suspended: bool) {
     window::suspend_auto_hide(suspended);
 }
 
+/// The UI has rendered its first frame with data; show the window if startup asked to.
+#[tauri::command]
+pub fn ui_ready(app: AppHandle) -> &'static str {
+    window::ui_ready(&app)
+}
+
 // ---------- updates ----------
 
 #[tauri::command]
