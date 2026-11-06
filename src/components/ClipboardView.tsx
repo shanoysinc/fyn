@@ -3,7 +3,8 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseColor, toHex } from "../lib/color";
 import { asUrl } from "../lib/entries";
 import { formatBytes, relativeTime } from "../lib/format";
-import { api, errorMessage, events, on, type ClipEntry, type ClipStatus } from "../lib/ipc";
+import { api, errorMessage, events, iconUrl, on, type ClipEntry, type ClipStatus } from "../lib/ipc";
+import type { GlyphName } from "../lib/entries";
 import { ActionPanel, type PanelAction } from "./ActionPanel";
 import { Glyph } from "./EntryIconView";
 import { Kbd } from "./Kbd";
@@ -63,12 +64,24 @@ function ClipIcon({ entry }: { entry: ClipEntry }) {
   if (kind === "color") {
     return <span className="glyph-tile glyph-tile--swatch" style={{ background: toHex(parseColor(entry.text.trim())!) }} />;
   }
-  const [glyph, tint] = kind === "link" ? (["globe", "#0090ff"] as const) : (["text", "#64748b"] as const);
+  if (kind === "link") return <SoftTile glyph="globe" tint="#0090ff" />;
+  // Text: the app it came from says the most (VS Code, Chrome, Word…); otherwise a document.
+  return <SourceIcon path={entry.sourceIcon} fallback={<SoftTile glyph="doc" tint="#8b8b94" />} />;
+}
+
+/** A light wash of colour with the symbol in that colour: calmer than a solid block. */
+function SoftTile({ glyph, tint }: { glyph: GlyphName; tint: string }) {
   return (
-    <span className="glyph-tile" style={{ background: tint }}>
+    <span className="glyph-tile glyph-tile--soft" style={{ "--tint": tint } as React.CSSProperties}>
       <Glyph name={glyph} size={15} />
     </span>
   );
+}
+
+function SourceIcon({ path, fallback }: { path: string | null; fallback: React.ReactNode }) {
+  const [failed, setFailed] = useState(false);
+  if (!path || failed) return <>{fallback}</>;
+  return <img className="app-icon app-icon--loaded" src={iconUrl(path)} alt="" draggable={false} onError={() => setFailed(true)} />;
 }
 
 export function ClipboardView({ onBack }: { onBack: () => void }) {

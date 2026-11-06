@@ -81,6 +81,8 @@ export interface ClipEntry {
   bytes: number | null;
   /** Small preview of an image (data: URL). */
   thumb: string | null;
+  /** Cached icon of the app it was copied from (file path), if Fyn knows the app. */
+  sourceIcon: string | null;
 }
 
 export interface UpdateInfo {

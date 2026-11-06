@@ -98,6 +98,12 @@ const PATHS: Record<GlyphName, ReactNode> = {
     </>
   ),
   text: <path d="M5 7h14M5 12h14M5 17h9" />,
+  doc: (
+    <>
+      <path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8Z" />
+      <path d="M14 3.5V8h4.5M9 12.5h6M9 16h4" />
+    </>
+  ),
   grid: (
     <>
       <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />

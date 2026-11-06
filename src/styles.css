@@ -1498,3 +1498,10 @@ img.app-icon--loaded {
 .search .segmented--compact {
   flex-shrink: 0;
 }
+
+/* Soft tiles: a light wash of the tint with the symbol in the tint (clipboard history). */
+.glyph-tile--soft {
+  background: color-mix(in srgb, var(--tint) 16%, transparent);
+  color: var(--tint);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 22%, transparent);
+}

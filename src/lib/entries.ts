@@ -12,7 +12,7 @@ export type View = "root" | "settings" | "welcome" | "emoji" | "color" | "collec
 export type GlyphName =
   | "lock" | "moon" | "restart" | "power" | "logout" | "trash" | "contrast"
   | "emoji" | "droplet" | "gear" | "sparkle" | "download" | "globe" | "search"
-  | "folder" | "file" | "calculator" | "sliders" | "grid" | "clipboard" | "text";
+  | "folder" | "file" | "calculator" | "sliders" | "grid" | "clipboard" | "text" | "doc";
 
 export type EntryIcon =
   | { kind: "app"; item: Item }

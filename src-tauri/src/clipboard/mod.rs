@@ -474,6 +474,8 @@ pub struct ClipEntry {
     bytes: Option<u64>,
     /// Small preview of an image, as a data: URL.
     thumb: Option<String>,
+    /// Cached icon (file path) of the app it was copied from, if Fyn knows that app.
+    source_icon: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -540,8 +542,20 @@ pub fn set_clipboard_settings(
     Ok(result)
 }
 
+/// Icon of each installed app by its executable's file name ("code.exe" -> cached PNG),
+/// so clipboard items can show the app they were copied from.
+fn icons_by_exe(apps: &[crate::indexer::App]) -> std::collections::HashMap<String, String> {
+    apps.iter()
+        .filter_map(|a| {
+            let exe = a.target.as_deref()?.rsplit(['\\', '/']).next()?.to_lowercase();
+            Some((exe, a.icon.clone()?))
+        })
+        .collect()
+}
+
 #[tauri::command]
-pub fn clipboard_list(clip: State<ClipState>) -> Vec<ClipEntry> {
+pub fn clipboard_list(clip: State<ClipState>, state: State<AppState>) -> Vec<ClipEntry> {
+    let icons = icons_by_exe(&state.apps());
     let inner = clip.inner.lock().unwrap();
     inner
         .items
@@ -554,6 +568,7 @@ pub fn clipboard_list(clip: State<ClipState>) -> Vec<ClipEntry> {
                 truncated: false,
                 chars: 0,
                 source: i.source.clone(),
+                source_icon: i.source.as_ref().and_then(|s| icons.get(s).cloned()),
                 created: i.created,
                 width: None,
                 height: None,
@@ -731,6 +746,27 @@ mod tests {
         assert!(inner.is_paused(), "an open-ended pause holds");
         inner.paused = Some(Some(Instant::now() + Duration::from_secs(60)));
         assert!(inner.is_paused(), "a pause that hasn't elapsed holds");
+    }
+
+    #[test]
+    fn source_apps_are_matched_to_their_icons_by_exe_name() {
+        use crate::indexer::{App, AppKind};
+        let app = |target: Option<&str>, icon: Option<&str>| App {
+            id: "x".into(),
+            name: "x".into(),
+            kind: AppKind::Desktop,
+            launch: "x".into(),
+            target: target.map(str::to_string),
+            icon: icon.map(str::to_string),
+            stamp: 0,
+        };
+        let icons = icons_by_exe(&[
+            app(Some(r"C:\Program Files\Microsoft VS Code\Code.exe"), Some(r"C:\icons\code.png")),
+            app(Some(r"C:\Tools\noicon.exe"), None),
+            app(None, Some(r"C:\icons\store.png")),
+        ]);
+        assert_eq!(icons.get("code.exe").map(String::as_str), Some(r"C:\icons\code.png"));
+        assert_eq!(icons.len(), 1, "apps without a known exe or icon are skipped");
     }
 
     #[test]

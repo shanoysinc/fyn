@@ -393,3 +393,32 @@ describe("right-click and filters", () => {
     expect(screen.getByText(/Images are off\. Turn them on/)).toBeInTheDocument();
   });
 });
+
+describe("item icons", () => {
+  it("text shows the icon of the app it was copied from, else a soft document tile", async () => {
+    api.clipboardList.mockResolvedValue([
+      makeClip({ id: 1, text: "from code", source: "code.exe", sourceIcon: "C:/icons/code.png" }),
+      makeClip({ id: 2, text: "from somewhere", source: "unknown.exe", sourceIcon: null }),
+      makeClip({ id: 3, text: "https://github.com", source: null }),
+    ]);
+    render(<ClipboardView onBack={vi.fn()} />);
+    await waitFor(() => expect(document.querySelectorAll(".clip__row")).toHaveLength(3));
+    const [code, unknown, link] = [...document.querySelectorAll(".clip__row")];
+    expect(code.querySelector("img.app-icon")).toHaveAttribute("src", "C:/icons/code.png");
+    expect(unknown.querySelector(".glyph-tile--soft")).not.toBeNull();
+    expect(unknown.querySelector("img")).toBeNull();
+    expect(link.querySelector(".glyph-tile--soft")).not.toBeNull();
+  });
+
+  it("falls back to the document tile if the app icon can't load", async () => {
+    api.clipboardList.mockResolvedValue([makeClip({ id: 1, text: "x", sourceIcon: "C:/missing.png" })]);
+    render(<ClipboardView onBack={vi.fn()} />);
+    const img = await waitFor(() => {
+      const el = document.querySelector<HTMLImageElement>(".clip__row img.app-icon");
+      expect(el).not.toBeNull();
+      return el!;
+    });
+    fireEvent.error(img);
+    await waitFor(() => expect(document.querySelector(".clip__row .glyph-tile--soft")).not.toBeNull());
+  });
+});

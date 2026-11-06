@@ -78,6 +78,7 @@ export function makeClip(over: Partial<ClipEntry> = {}): ClipEntry {
     height: null,
     bytes: null,
     thumb: null,
+    sourceIcon: null,
     ...over,
   };
 }
