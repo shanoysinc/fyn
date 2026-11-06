@@ -98,6 +98,21 @@ const PATHS: Record<GlyphName, ReactNode> = {
     </>
   ),
   text: <path d="M5 7h14M5 12h14M5 17h9" />,
+  broom: (
+    <>
+      <path d="M19 5l-7.5 7.5" />
+      <path d="M9.5 11.5l3 3-2.2 4.4a1 1 0 0 1-1.6.3l-4-4a1 1 0 0 1 .3-1.6Z" />
+      <path d="M7 15.5l1.5 1.5" />
+    </>
+  ),
+  apps: (
+    <>
+      <rect x="4" y="4" width="6.5" height="6.5" rx="2" />
+      <rect x="13.5" y="4" width="6.5" height="6.5" rx="3.25" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="2" />
+      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="2" />
+    </>
+  ),
   doc: (
     <>
       <path d="M14 3.5H7.5a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2h9a2 2 0 0 0 2-2V8Z" />

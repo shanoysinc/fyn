@@ -93,13 +93,18 @@ fn shutdown_exe(args: &[&str]) -> Result<Option<String>, String> {
         .map_err(|e| format!("Couldn't run shutdown: {e}"))
 }
 
-fn empty_recycle_bin() -> Result<Option<String>, String> {
+/// Items and bytes in the Recycle Bin (all drives).
+pub fn recycle_bin_size() -> Result<(u64, u64), String> {
     let mut info = SHQUERYRBINFO {
         cbSize: std::mem::size_of::<SHQUERYRBINFO>() as u32,
         ..Default::default()
     };
     unsafe { SHQueryRecycleBinW(PCWSTR::null(), &mut info) }.map_err(|e| e.to_string())?;
-    let count = info.i64NumItems;
+    Ok((info.i64NumItems.max(0) as u64, info.i64Size.max(0) as u64))
+}
+
+pub fn empty_recycle_bin() -> Result<Option<String>, String> {
+    let (count, _) = recycle_bin_size()?;
     if count == 0 {
         return Ok(Some("Recycle Bin is already empty".into()));
     }

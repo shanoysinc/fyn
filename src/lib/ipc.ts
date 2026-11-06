@@ -85,6 +85,52 @@ export interface ClipEntry {
   sourceIcon: string | null;
 }
 
+// ---------- mini apps: Clean Windows ----------
+
+export interface CleanSettings {
+  /** Category ids switched on. */
+  enabled: string[];
+  /** Words that protect anything whose name or path contains them. */
+  protected: string[];
+}
+
+export interface ScanItem {
+  /** "avd:<name>" or "image:<id>". */
+  id: string;
+  name: string;
+  bytes: number;
+  protected: boolean;
+  note: string | null;
+}
+
+export interface ScanCategory {
+  id: string;
+  title: string;
+  description: string;
+  enabled: boolean;
+  /** Off by default (Android). */
+  optional: boolean;
+  /** Something to clean exists on this PC. */
+  available: boolean;
+  files: number;
+  bytes: number;
+  /** Emulators / system images, chosen one by one. */
+  items: ScanItem[];
+}
+
+export interface ScanReport {
+  categories: ScanCategory[];
+  disk: { free: number; total: number } | null;
+}
+
+export interface CleanReport {
+  freedBytes: number;
+  deletedFiles: number;
+  /** In use or couldn't be deleted. */
+  skippedFiles: number;
+  errors: string[];
+}
+
 export interface UpdateInfo {
   version: string;
   currentVersion: string;
@@ -141,6 +187,12 @@ export const api = {
   clipboardClear: () => invoke<void>("clipboard_clear"),
   /** Minutes to pause (0 = until resumed), or null to resume. */
   clipboardPause: (minutes: number | null) => invoke<ClipStatus>("clipboard_pause", { minutes }),
+  cleanSettings: () => invoke<CleanSettings>("clean_settings"),
+  setCleanSettings: (settings: CleanSettings) => invoke<CleanSettings>("set_clean_settings", { settings }),
+  /** Read-only: what each category could free. */
+  cleanScan: () => invoke<ScanReport>("clean_scan"),
+  /** Deletes the chosen categories and items (by id; Rust works out the paths). */
+  cleanRun: (categories: string[], items: string[]) => invoke<CleanReport>("clean_run", { categories, items }),
 };
 
 export const events = {

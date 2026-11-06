@@ -293,6 +293,7 @@ describe("formatBytes", () => {
     [512, "512 B"],
     [1536, "2 KB"],
     [2_400_000, "2.3 MB"],
+    [28_200_000_000, "26.3 GB"],
   ])("%i -> %s", (n, s) => expect(formatBytes(n)).toBe(s));
 });
 

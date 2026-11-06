@@ -5,14 +5,24 @@ import { calculate } from "./calc";
 import { parseColor, toHex, toHslString, toRgbString } from "./color";
 import { fuzzyMatch } from "./fuzzy";
 import { api, copyText, type Item, type PathInfo, type SearchEngine, type SystemCommandId } from "./ipc";
+import { MINI_APPS } from "../miniapps/registry";
 
 /** "collection" = all favorites or all suggestions (arg "fav" / "sug"). */
-export type View = "root" | "settings" | "welcome" | "emoji" | "color" | "collection" | "clipboard";
+export type View =
+  | "root"
+  | "settings"
+  | "welcome"
+  | "emoji"
+  | "color"
+  | "collection"
+  | "clipboard"
+  | "miniapps"
+  | "clean";
 
 export type GlyphName =
   | "lock" | "moon" | "restart" | "power" | "logout" | "trash" | "contrast"
   | "emoji" | "droplet" | "gear" | "sparkle" | "download" | "globe" | "search"
-  | "folder" | "file" | "calculator" | "sliders" | "grid" | "clipboard" | "text" | "doc";
+  | "folder" | "file" | "calculator" | "sliders" | "grid" | "clipboard" | "text" | "doc" | "broom" | "apps";
 
 export type EntryIcon =
   | { kind: "app"; item: Item }
@@ -150,6 +160,8 @@ export const COMMANDS: CommandDef[] = [
   system("empty-recycle-bin", "Empty Recycle Bin", "trash", ["trash", "bin", "delete"], "empty the Recycle Bin"),
   system("toggle-dark-mode", "Toggle Windows Dark Mode", "contrast", ["dark mode", "light mode", "windows theme"]),
 
+  fyn("miniapps", "Mini Apps", "apps", ["mini apps", "tools", "utilities", "apps"], (c) => c.openView("miniapps")),
+  ...MINI_APPS.map((app) => fyn(app.id, app.title, app.glyph, app.keywords, (c) => c.openView(app.view))),
   fyn("clipboard", "Clipboard History", "clipboard", ["clipboard", "paste", "copied", "history", "copy"], (c) =>
     c.openView("clipboard"),
   ),

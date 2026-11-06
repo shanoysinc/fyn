@@ -3,7 +3,7 @@
 import { vi } from "vitest";
 import type * as Ipc from "../lib/ipc";
 import type { ClipSettings } from "../lib/ipc";
-import { makeClipStatus, makeHome, makeSettings } from "./fixtures";
+import { makeClipStatus, makeHome, makeScanReport, makeSettings } from "./fixtures";
 
 type Handler = (payload: unknown) => void;
 const handlers = new Map<string, Set<Handler>>();
@@ -43,6 +43,10 @@ export const api = {
   clipboardDelete: vi.fn(),
   clipboardClear: vi.fn(),
   clipboardPause: vi.fn(),
+  cleanSettings: vi.fn(),
+  setCleanSettings: vi.fn(),
+  cleanScan: vi.fn(),
+  cleanRun: vi.fn(),
 } satisfies Record<keyof typeof Ipc.api, unknown>;
 
 /** Restore every fake to its default answer. Call in beforeEach. */
@@ -59,6 +63,10 @@ export function resetApi() {
   api.setHotkey.mockImplementation(async (h: string) => h);
   api.clipboardStatus.mockResolvedValue(makeClipStatus());
   api.clipboardList.mockResolvedValue([]);
+  api.cleanSettings.mockResolvedValue({ enabled: ["temp", "npm", "gradle"], protected: ["beacon", "emr"] });
+  api.setCleanSettings.mockImplementation(async (s: { enabled: string[]; protected: string[] }) => s);
+  api.cleanScan.mockResolvedValue(makeScanReport());
+  api.cleanRun.mockResolvedValue({ freedBytes: 0, deletedFiles: 0, skippedFiles: 0, errors: [] });
   api.setClipboardSettings.mockImplementation(async (s: ClipSettings) => makeClipStatus({ ...s }));
   api.clipboardPause.mockImplementation(async (m: number | null) => makeClipStatus({ paused: m !== null }));
 }

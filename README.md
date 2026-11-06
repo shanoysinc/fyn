@@ -61,6 +61,20 @@ Type `clipboard` to search and paste what you copied recently (<kbd>Enter</kbd> 
 
 No tool can recognise a human-chosen password like `Summer2024!` (it looks like ordinary text); that's what the short retention, Pause and delete are for.
 
+### Mini Apps
+
+Small built-in tools with their own screen. Open them from the **Mini Apps** button next to Settings at the bottom of Fyn, or search for them by name (and pin them like anything else).
+
+**Clean Windows** frees disk space. It scans first (read-only) and shows what each category would free; nothing is deleted until you press <kbd>Enter</kbd> twice.
+
+| Category | Default |
+| --- | --- |
+| Temporary files (older than a day), crash dumps & error reports, Recycle Bin | On |
+| npm, Yarn, pnpm, Bun and pip caches, Gradle caches | On |
+| Android emulators, Android SDK system images (picked one by one) | Optional, off |
+
+Switch any category off with <kbd>Space</kbd> or a click; your choices are remembered. **Protected names** (default `beacon` and `EMR`) are never touched: anything whose name or path contains one is skipped, including emulators with that name and the system images they use. Paths are fixed and worked out in Rust, links and junctions are never followed, and files in use are skipped.
+
 ## Keyboard shortcuts
 
 | Keys | Action |
@@ -143,6 +157,7 @@ src-tauri/src/
   search.rs       nucleo fuzzy match + ranking
   system.rs       system commands, Settings pages, URLs and paths
   clipboard/      clipboard history: watcher, secret detection, DPAPI encryption, paste
+  miniapps/       built-in mini apps (clean.rs: Clean Windows scanning + cleaning)
   launcher.rs     ShellExecute open / runas, reveal in Explorer
   updater.rs      update check / install (tauri-plugin-updater)
   icons.rs        IShellItemImageFactory → PNG cache (4 parallel workers)
@@ -200,6 +215,7 @@ src/
 - System commands (lock, sleep, restart, shut down, sign out, empty Recycle Bin, Windows dark mode) and 35+ Windows Settings pages
 - Emoji picker; color picker with HEX/RGB/HSL conversion and a screen eyedropper
 - Clipboard history with layered privacy protection
+- Mini Apps, starting with **Clean Windows** (free disk space)
 - Right-click actions menu, welcome tour, light/dark/system theme for Fyn, launch at login
 - Signed auto-updates, one-command releases (`bun run release`), CI with ~390 tests
 

@@ -1,9 +1,11 @@
 import { Command } from "cmdk";
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActionPanel, type PanelAction } from "./components/ActionPanel";
+import { CleanView } from "./components/CleanView";
 import { ClipboardView } from "./components/ClipboardView";
+import { MiniAppsView } from "./components/MiniAppsView";
 import { ColorView } from "./components/ColorView";
-import { EntryIconView, GEAR_PATH } from "./components/EntryIconView";
+import { EntryIconView, GEAR_PATH, Glyph } from "./components/EntryIconView";
 import { Kbd } from "./components/Kbd";
 import { SettingsView } from "./components/SettingsView";
 import { BackButton } from "./components/ViewHeader";
@@ -81,6 +83,8 @@ const valueOf = (section: string, id: string) => `${section}:${id}`;
 export function App() {
   const [view, setView] = useState<View>("root");
   const [viewArg, setViewArg] = useState<string | undefined>();
+  /** Screen to go back to instead of home (e.g. Mini Apps after one of its apps). */
+  const [returnTo, setReturnTo] = useState<View | null>(null);
   const [query, setQuery] = useState("");
   const [home, setHome] = useState<Home | null>(null);
   const [results, setResults] = useState<Results | null>(null);
@@ -124,6 +128,8 @@ export function App() {
     // list content changes, so no screen slide; see the list swap animation below.
     setNav(next === "welcome" ? "intro" : next === "collection" && viewRef.current === "root" ? "none" : "forward");
     if (next === "collection") setQuery(""); // the box filters the collection from scratch
+    // A mini app opened from the Mini Apps screen goes back there, not home.
+    setReturnTo(viewRef.current === "miniapps" && next !== "miniapps" ? "miniapps" : null);
     setView(next);
   }, []);
 
@@ -528,6 +534,16 @@ export function App() {
     focusInput();
   }, [focusInput, loadSettings]);
 
+  /** Go back to a specific screen (sliding back, like `back`). */
+  const backTo = useCallback(
+    (to: View) => () => {
+      setNav("back");
+      setReturnTo(null);
+      setView(to);
+    },
+    [],
+  );
+
   const finishWelcome = useCallback(() => {
     api.setOnboarded(true).catch(showError);
     setSettings((s) => (s ? { ...s, onboarded: true } : s));
@@ -623,6 +639,10 @@ export function App() {
           <Suspense fallback={null}>
             <EmojiView onBack={back} />
           </Suspense>
+        ) : view === "miniapps" ? (
+          <MiniAppsView onBack={back} onOpen={(v) => openView(v)} />
+        ) : view === "clean" ? (
+          <CleanView onBack={returnTo ? backTo(returnTo) : back} />
         ) : view === "clipboard" ? (
           <ClipboardView onBack={back} />
         ) : view === "color" ? (
@@ -739,6 +759,14 @@ export function App() {
                   onClick={() => openView("settings")}
                 >
                   <GearIcon />
+                </button>
+                <button
+                  className="icon-btn"
+                  aria-label="Mini Apps"
+                  title="Mini Apps"
+                  onClick={() => openView("miniapps")}
+                >
+                  <Glyph name="apps" size={17} />
                 </button>
                 {update && (
                   <button className="pill" onClick={() => openView("settings")} title="Open Settings to install">

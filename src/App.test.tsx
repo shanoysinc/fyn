@@ -506,6 +506,25 @@ describe("screens", () => {
     await screen.findByRole("heading", { name: "Settings" });
   });
 
+  it("the Mini Apps button in the footer opens Mini Apps, and Clean Windows from there goes back to it", async () => {
+    const { user } = await setup();
+    await user.click(screen.getByRole("button", { name: "Mini Apps" }));
+    await screen.findByText("Free up disk space: temp files, caches, crash dumps and more");
+    await user.keyboard("{Enter}");
+    await screen.findByText("Never touch anything named");
+    await user.keyboard("{Escape}");
+    await screen.findByText("Free up disk space: temp files, caches, crash dumps and more"); // back to Mini Apps
+  });
+
+  it("the Clean Windows command opens it straight from search", async () => {
+    const { user, input } = await setup();
+    await user.type(input, "clean windows");
+    await screen.findByText("Commands");
+    expect(selectedRow()).toHaveTextContent("Clean Windows");
+    await user.keyboard("{Enter}");
+    await screen.findByText("Never touch anything named");
+  });
+
   it("the Clipboard History command opens clipboard history", async () => {
     const { user, input } = await setup();
     await user.type(input, "clipboard");

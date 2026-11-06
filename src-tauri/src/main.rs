@@ -7,6 +7,7 @@ mod hotkey;
 mod icons;
 mod indexer;
 mod launcher;
+mod miniapps;
 mod picker;
 mod search;
 mod state;
@@ -109,6 +110,10 @@ fn main() {
             clipboard::clipboard_delete,
             clipboard::clipboard_clear,
             clipboard::clipboard_pause,
+            miniapps::clean_settings,
+            miniapps::set_clean_settings,
+            miniapps::clean_scan,
+            miniapps::clean_run,
             commands::ui_ready,
             commands::check_for_update,
             commands::install_update,

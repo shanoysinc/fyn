@@ -1,10 +1,11 @@
 // Small formatting helpers shared by screens.
 
-/** 1536 -> "2 KB", 2_400_000 -> "2.3 MB" */
+/** 1536 -> "2 KB", 2_400_000 -> "2.3 MB", 28_200_000_000 -> "26.3 GB" */
 export function formatBytes(n: number): string {
   if (n < 1024) return `${n} B`;
   if (n < 1024 * 1024) return `${Math.round(n / 1024)} KB`;
-  return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  if (n < 1024 ** 3) return `${(n / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(n / 1024 ** 3).toFixed(1)} GB`;
 }
 
 /** Unix seconds -> "Just now", "5m ago", "3h ago", "Yesterday", "4d ago". */

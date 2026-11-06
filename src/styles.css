@@ -1505,3 +1505,193 @@ img.app-icon--loaded {
   color: var(--tint);
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--tint) 22%, transparent);
 }
+
+/* For inputs that only exist to drive keyboard navigation. */
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+/* ---------- Mini Apps ---------- */
+
+.miniapps {
+  padding: 12px;
+}
+
+.miniapp {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 12px;
+  border-radius: 12px;
+  transition: background-color 90ms ease-out;
+}
+
+.miniapp:hover {
+  background: var(--hover);
+}
+
+.miniapp[data-selected="true"] {
+  background: var(--selected);
+}
+
+.miniapp__icon {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  border-radius: 12px;
+  color: #fff;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.18);
+}
+
+.miniapp__text {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.miniapp__title {
+  font-size: 14.5px;
+  font-weight: 600;
+}
+
+.miniapp__desc {
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.miniapps__more {
+  padding: 16px 12px;
+  font-size: 12.5px;
+  color: var(--text-3);
+}
+
+/* ---------- Clean Windows ---------- */
+
+.clean__disk {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--text-2);
+  white-space: nowrap;
+}
+
+.clean__disk-bar {
+  width: 64px;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--kbd-bg);
+  overflow: hidden;
+}
+
+.clean__disk-bar span {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--accent);
+}
+
+.clean__row {
+  height: auto;
+  min-height: 52px;
+  padding-block: 6px;
+}
+
+.clean__row--item {
+  min-height: 42px;
+  padding-left: 40px;
+}
+
+.clean__row--missing,
+.clean__row--protected {
+  opacity: 0.55;
+}
+
+.clean__text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.clean__title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.clean__desc {
+  font-size: 12px;
+  color: var(--text-2);
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.clean__tag {
+  padding: 1px 6px;
+  border-radius: 5px;
+  background: var(--kbd-bg);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.clean__size {
+  flex-shrink: 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+
+.check {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  box-shadow: inset 0 0 0 1.5px var(--text-3);
+  color: #fff;
+  transition: background-color 120ms ease-out, box-shadow 120ms ease-out;
+}
+
+.check--on {
+  background: var(--accent);
+  box-shadow: none;
+}
+
+.clean__protected {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 4px 4px;
+  padding: 12px;
+  border-radius: 10px;
+  background: var(--kbd-bg);
+}
+
+.clean__protected .setting__title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+}
+
+.clean__go {
+  min-height: 30px;
+}
