@@ -1,6 +1,7 @@
 // Hide the console window in release builds.
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod clipboard;
 mod commands;
 mod hotkey;
 mod icons;
@@ -58,6 +59,7 @@ fn main() {
             let cached = indexer::cache::load(&data_dir);
             app.manage(AppState::new(data_dir, store, cached, hotkey.clone()));
 
+            clipboard::init(&handle);
             hotkey::register_initial(&handle, &hotkey);
             tray::create(&handle)?;
             window::install(&handle);
@@ -98,6 +100,15 @@ fn main() {
             commands::check_path,
             commands::open_path,
             commands::pick_screen_color,
+            clipboard::clipboard_status,
+            clipboard::set_clipboard_settings,
+            clipboard::clipboard_list,
+            clipboard::clipboard_reveal,
+            clipboard::clipboard_copy,
+            clipboard::clipboard_paste,
+            clipboard::clipboard_delete,
+            clipboard::clipboard_clear,
+            clipboard::clipboard_pause,
             commands::ui_ready,
             commands::check_for_update,
             commands::install_update,

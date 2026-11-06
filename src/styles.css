@@ -1257,3 +1257,215 @@ img.app-icon--loaded {
 .search > .search__icon {
   animation: fade-in 160ms ease-out;
 }
+
+/* ---------- clipboard history ---------- */
+
+.clip {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.clip__list {
+  flex: 0 0 52%;
+  border-right: 1px solid var(--line);
+}
+
+.clip__row .row__name {
+  font-size: 13.5px;
+}
+
+.clip__mask {
+  letter-spacing: 0.12em;
+  color: var(--text-2);
+}
+
+.clip__time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.clip__preview {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 12px 16px;
+  overflow: hidden;
+}
+
+.clip__text {
+  flex: 1;
+  min-height: 0;
+  margin: 0;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-family: ui-monospace, "Cascadia Code", Consolas, monospace;
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  user-select: text;
+}
+
+.clip__secret {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+}
+
+.clip__secret .clip__text {
+  flex: 0 0 auto;
+  font-size: 15px;
+  letter-spacing: 0.08em;
+}
+
+.clip__secret p {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.clip__meta {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 4px 12px;
+  margin: 10px 0 0;
+  padding-top: 10px;
+  border-top: 1px solid var(--line);
+  font-size: 12px;
+}
+
+.clip__meta dt {
+  color: var(--text-3);
+}
+
+.clip__meta dd {
+  margin: 0;
+  color: var(--text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* First-use explanation */
+.clip-intro__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.clip-intro__body {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 0 64px 16px;
+  text-align: center;
+  animation: rise-in 320ms var(--ease-out) both;
+}
+
+.clip-intro__icon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+}
+
+.clip-intro__lead {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.clip-intro__points {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: grid;
+  gap: 6px;
+  font-size: 12.5px;
+  color: var(--text-2);
+}
+
+.clip-intro__points li::before {
+  content: "✓  ";
+  color: var(--accent);
+  font-weight: 700;
+}
+
+.clip-intro__actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+
+/* Settings: nested options and app chips */
+.setting-group {
+  margin-left: 14px;
+  padding-left: 14px;
+  border-left: 2px solid var(--line);
+}
+
+.setting--column {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 10px;
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 26px;
+  padding: 0 4px 0 10px;
+  border-radius: 13px;
+  background: var(--kbd-bg);
+  font-size: 12.5px;
+}
+
+.chip button {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1;
+}
+
+.chip button:hover {
+  background: var(--selected);
+  color: var(--text);
+}
+
+.chip-input {
+  flex: 1;
+  min-width: 170px;
+  height: 26px;
+  padding: 0 10px;
+  border: 1px dashed var(--line);
+  border-radius: 13px;
+  background: transparent;
+  font: inherit;
+  font-size: 12.5px;
+  color: var(--text);
+  outline: none;
+}
+
+.chip-input:focus {
+  border-style: solid;
+  border-color: var(--accent);
+}

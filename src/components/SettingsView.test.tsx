@@ -70,9 +70,9 @@ describe("SettingsView", () => {
 
   it("toggles launch at login", async () => {
     const { user } = await setup();
-    await user.click(screen.getByRole("switch"));
+    await user.click(screen.getByRole("switch", { name: "Launch at login" }));
     expect(api.setAutostart).toHaveBeenCalledWith(true);
-    expect(screen.getByRole("switch")).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("switch", { name: "Launch at login" })).toHaveAttribute("aria-checked", "true");
   });
 
   it("records a new shortcut, suspending the old one meanwhile", async () => {

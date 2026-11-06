@@ -7,12 +7,12 @@ import { fuzzyMatch } from "./fuzzy";
 import { api, copyText, type Item, type PathInfo, type SearchEngine, type SystemCommandId } from "./ipc";
 
 /** "collection" = all favorites or all suggestions (arg "fav" / "sug"). */
-export type View = "root" | "settings" | "welcome" | "emoji" | "color" | "collection";
+export type View = "root" | "settings" | "welcome" | "emoji" | "color" | "collection" | "clipboard";
 
 export type GlyphName =
   | "lock" | "moon" | "restart" | "power" | "logout" | "trash" | "contrast"
   | "emoji" | "droplet" | "gear" | "sparkle" | "download" | "globe" | "search"
-  | "folder" | "file" | "calculator" | "sliders" | "grid";
+  | "folder" | "file" | "calculator" | "sliders" | "grid" | "clipboard" | "text";
 
 export type EntryIcon =
   | { kind: "app"; item: Item }
@@ -150,6 +150,9 @@ export const COMMANDS: CommandDef[] = [
   system("empty-recycle-bin", "Empty Recycle Bin", "trash", ["trash", "bin", "delete"], "empty the Recycle Bin"),
   system("toggle-dark-mode", "Toggle Windows Dark Mode", "contrast", ["dark mode", "light mode", "windows theme"]),
 
+  fyn("clipboard", "Clipboard History", "clipboard", ["clipboard", "paste", "copied", "history", "copy"], (c) =>
+    c.openView("clipboard"),
+  ),
   fyn("emoji", "Search Emoji", "emoji", ["emoji", "emoticon", "symbols", "smiley"], (c) => c.openView("emoji")),
   fyn("color", "Pick Color", "droplet", ["color picker", "colour", "eyedropper", "hex", "rgb"], (c) => c.openView("color")),
   fyn("settings", "Fyn Settings", "gear", ["preferences", "options", "config"], (c) => c.openView("settings")),
@@ -188,7 +191,7 @@ export const COMMANDS: CommandDef[] = [
   settingsPage("multitasking", "Multitasking", ["snap", "virtual desktops", "alt tab"]),
   settingsPage("mousetouchpad", "Mouse", ["cursor", "scroll", "touchpad"]),
   settingsPage("keyboard", "Keyboard", ["typing", "input"]),
-  settingsPage("clipboard", "Clipboard", ["clipboard history", "copy paste"]),
+  settingsPage("clipboard", "Clipboard", ["windows clipboard", "copy paste"]),
   settingsPage("printers", "Printers & Scanners", ["printer", "scanner"]),
   settingsPage("dateandtime", "Date & Time", ["clock", "timezone", "time zone"]),
   settingsPage("regionlanguage", "Language & Region", ["language", "region", "locale"]),

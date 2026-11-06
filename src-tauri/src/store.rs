@@ -39,6 +39,14 @@ impl Store {
              CREATE TABLE IF NOT EXISTS settings (
                  key   TEXT PRIMARY KEY,
                  value TEXT NOT NULL
+             );
+             -- Clipboard history. `data` is DPAPI-encrypted text (see clipboard::crypto);
+             -- nothing readable is stored. Password-like items never get here.
+             CREATE TABLE IF NOT EXISTS clipboard (
+                 id      INTEGER PRIMARY KEY AUTOINCREMENT,
+                 created INTEGER NOT NULL,
+                 source  TEXT,
+                 data    BLOB NOT NULL
              );",
         )?;
         Ok(Self { conn })
@@ -123,6 +131,53 @@ impl Store {
         )?;
         Ok(())
     }
+
+    // ---------- clipboard history (encrypted blobs only) ----------
+
+    pub fn clip_insert(&self, created: i64, source: Option<&str>, data: &[u8]) -> rusqlite::Result<i64> {
+        self.conn.execute(
+            "INSERT INTO clipboard (created, source, data) VALUES (?1, ?2, ?3)",
+            params![created, source, data],
+        )?;
+        Ok(self.conn.last_insert_rowid())
+    }
+
+    /// All items, newest first: (id, created, source, encrypted data).
+    pub fn clip_all(&self) -> Vec<(i64, i64, Option<String>, Vec<u8>)> {
+        let Ok(mut stmt) = self
+            .conn
+            .prepare_cached("SELECT id, created, source, data FROM clipboard ORDER BY created DESC, id DESC")
+        else {
+            return Vec::new();
+        };
+        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
+            .map(|rows| rows.filter_map(Result::ok).collect())
+            .unwrap_or_default()
+    }
+
+    pub fn clip_delete(&self, id: i64) -> rusqlite::Result<()> {
+        self.conn.execute("DELETE FROM clipboard WHERE id = ?1", [id])?;
+        Ok(())
+    }
+
+    /// Delete everything, and compact the file so the deleted blobs don't linger on disk.
+    pub fn clip_delete_all(&self) -> rusqlite::Result<()> {
+        self.conn.execute("DELETE FROM clipboard", [])?;
+        self.conn.execute_batch("VACUUM")?;
+        Ok(())
+    }
+
+    /// Drop items older than `cutoff` and anything beyond the newest `keep`.
+    /// Returns how many were removed.
+    pub fn clip_prune(&self, cutoff: i64, keep: usize) -> rusqlite::Result<usize> {
+        let old = self.conn.execute("DELETE FROM clipboard WHERE created < ?1", [cutoff])?;
+        let extra = self.conn.execute(
+            "DELETE FROM clipboard WHERE id NOT IN
+               (SELECT id FROM clipboard ORDER BY created DESC, id DESC LIMIT ?1)",
+            [keep as i64],
+        )?;
+        Ok(old + extra)
+    }
 }
 
 #[cfg(test)]
@@ -131,6 +186,33 @@ mod tests {
 
     fn store() -> Store {
         Store::open(Path::new(":memory:")).expect("in-memory db")
+    }
+
+    #[test]
+    fn clipboard_rows_insert_list_delete() {
+        let s = store();
+        let a = s.clip_insert(100, Some("code.exe"), b"enc-a").unwrap();
+        let b = s.clip_insert(200, None, b"enc-b").unwrap();
+        let all = s.clip_all();
+        assert_eq!(all.iter().map(|r| r.0).collect::<Vec<_>>(), vec![b, a]); // newest first
+        assert_eq!(all[1].2.as_deref(), Some("code.exe"));
+        assert_eq!(all[0].3, b"enc-b");
+        s.clip_delete(a).unwrap();
+        assert_eq!(s.clip_all().len(), 1);
+        s.clip_delete_all().unwrap();
+        assert!(s.clip_all().is_empty());
+    }
+
+    #[test]
+    fn clipboard_prune_by_age_and_count() {
+        let s = store();
+        for t in 1..=10 {
+            s.clip_insert(t * 100, None, b"x").unwrap();
+        }
+        // Older than 300 goes (100, 200), then only the newest 5 stay.
+        assert_eq!(s.clip_prune(300, 5).unwrap(), 5);
+        let created: Vec<i64> = s.clip_all().iter().map(|r| r.1).collect();
+        assert_eq!(created, vec![1000, 900, 800, 700, 600]);
     }
 
     #[test]

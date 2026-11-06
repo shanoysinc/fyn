@@ -38,6 +38,7 @@
 | `lock`, `sleep`, `restart`, `shut down`, `sign out` | **System commands** (restart, shut down and sign out ask you to confirm) |
 | `empty recycle bin`, `toggle windows dark mode` | **More system commands** |
 | `emoji` | **Emoji picker** with search and recently used |
+| `clipboard` | **Clipboard history**: search and paste what you copied (opt-in, encrypted, password-aware) |
 | `#7c3aed`, `rgb(…)`, `color` | **Color picker**: convert between HEX, RGB and HSL, or pick a color from anywhere on screen |
 
 ### Everything else
@@ -46,6 +47,18 @@
 - Welcome screen on first run.
 - Signed auto-updates.
 - Tray icon, launch at login (on by default; turning it off sticks), single instance, hides when it loses focus, opens on the monitor under your cursor, acrylic background.
+
+### Clipboard history
+
+Type `clipboard` to search and paste what you copied recently (<kbd>Enter</kbd> pastes into the app you were in). It's **off until you turn it on**, never leaves your PC, and protects sensitive copies in layers:
+
+1. **Copies from password managers are never recorded**: Fyn honours the "don't record" flags that 1Password, Bitwarden, KeePass and others set (the same ones Windows' own clipboard history uses), and ignores copies made while those apps are in front. You can add your own apps in Settings.
+2. **Known secrets are never kept**: API keys and tokens (GitHub, OpenAI, Anthropic, AWS, Stripe, Slack, Google, npm, JWTs…), private keys, credentials in URLs, `PASSWORD=` lines and card numbers (Luhn-checked). Patterns follow the gitleaks rule set.
+3. **Password-like text is hidden**: shown masked, kept **encrypted in memory only** for a minute and then wiped, never written to disk, and (optionally) cleared from the clipboard after that minute. Reveal with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.
+4. **Everything else is encrypted on disk** with your Windows account (DPAPI), and deleted after 1, 7 or 30 days (max 200 items).
+5. **Pause** for 15 minutes or until resumed, delete single items (<kbd>Ctrl</kbd>+<kbd>Backspace</kbd>) or **clear everything**; turning the feature off deletes it all.
+
+No tool can recognise a human-chosen password like `Summer2024!` (it looks like ordinary text); that's what the short retention, Pause and delete are for.
 
 ## Keyboard shortcuts
 
@@ -128,6 +141,7 @@ src-tauri/src/
     cache.rs        apps.json snapshot for instant startup
   search.rs       nucleo fuzzy match + ranking
   system.rs       system commands, Settings pages, URLs and paths
+  clipboard/      clipboard history: watcher, secret detection, DPAPI encryption, paste
   launcher.rs     ShellExecute open / runas, reveal in Explorer
   updater.rs      update check / install (tauri-plugin-updater)
   icons.rs        IShellItemImageFactory → PNG cache (4 parallel workers)
@@ -173,6 +187,7 @@ src/
 - **Run as administrator** always goes through UAC. Fyn never runs elevated itself.
 - **The eyedropper** captures the mouse and Esc only while you're picking a color: it takes the one click (so it doesn't reach the app underneath), then removes the capture. It gives up after 30 seconds.
 - **Network use is limited to the update check.** Updates are verified against the bundled public key before they install.
+- **Clipboard history is opt-in and private by design**: see [Clipboard history](#clipboard-history) above.
 - **Release hardening.** No dev tools, no context menu, reload disabled, no dev menu.
 
 ## Roadmap
@@ -183,14 +198,14 @@ src/
 - Calculator, web search with site prefixes, open URLs and paths
 - System commands (lock, sleep, restart, shut down, sign out, empty Recycle Bin, Windows dark mode) and 35+ Windows Settings pages
 - Emoji picker; color picker with HEX/RGB/HSL conversion and a screen eyedropper
+- Clipboard history with layered privacy protection
 - Right-click actions menu, welcome tour, light/dark/system theme for Fyn, launch at login
-- Signed auto-updates, one-command releases (`bun run release`), CI with ~330 tests
+- Signed auto-updates, one-command releases (`bun run release`), CI with ~390 tests
 
 ### 🔜 Next
 
 - **Code-signed installer**, so Windows stops showing the "isn't commonly downloaded" / SmartScreen warning
 - **Unit and currency conversion** in the calculator (`5 km in mi`, `20 usd in eur`)
-- **Clipboard history**: search and paste anything you copied recently
 - **Quicklinks**: saved searches and links with a placeholder (`jira {query}`)
 
 ### 💡 Later

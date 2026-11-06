@@ -1,6 +1,7 @@
 import { Command } from "cmdk";
 import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import { ActionPanel, type PanelAction } from "./components/ActionPanel";
+import { ClipboardView } from "./components/ClipboardView";
 import { ColorView } from "./components/ColorView";
 import { EntryIconView, GEAR_PATH } from "./components/EntryIconView";
 import { Kbd } from "./components/Kbd";
@@ -622,6 +623,8 @@ export function App() {
           <Suspense fallback={null}>
             <EmojiView onBack={back} />
           </Suspense>
+        ) : view === "clipboard" ? (
+          <ClipboardView onBack={back} />
         ) : view === "color" ? (
           <ColorView initial={viewArg} onBack={back} />
         ) : (

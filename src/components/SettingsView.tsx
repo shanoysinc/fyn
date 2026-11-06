@@ -8,6 +8,8 @@ import {
   on,
   type SearchEngine,
   type Settings,
+  type ClipSettings,
+  type ClipStatus,
   type HomeLayout,
   type Theme,
   type UpdateInfo,
@@ -215,6 +217,7 @@ export function SettingsView({ onBack, onShowWelcome, update, onUpdate }: Props)
           <button
             role="switch"
             aria-checked={settings?.autostart ?? false}
+            aria-label="Launch at login"
             className={`switch ${settings?.autostart ? "switch--on" : ""}`}
             onClick={toggleAutostart}
           >
@@ -293,6 +296,8 @@ export function SettingsView({ onBack, onShowWelcome, update, onUpdate }: Props)
           )}
         </section>
 
+        <ClipboardSettings onError={setError} />
+
         <section className="setting">
           <div>
             <div className="setting__title">Getting started</div>
@@ -332,5 +337,142 @@ function Segmented({
         </button>
       ))}
     </div>
+  );
+}
+
+/** Clipboard history: on/off, retention, password handling, ignored apps. */
+function ClipboardSettings({ onError }: { onError: (message: string | null) => void }) {
+  const [status, setStatus] = useState<ClipStatus | null>(null);
+  const [newApp, setNewApp] = useState("");
+
+  useEffect(() => {
+    api.clipboardStatus().then(setStatus).catch((e) => onError(errorMessage(e)));
+  }, [onError]);
+
+  const save = async (change: Partial<ClipSettings>) => {
+    if (!status) return;
+    try {
+      setStatus(await api.setClipboardSettings({ ...status, ...change }));
+      onError(null);
+    } catch (e) {
+      onError(errorMessage(e));
+    }
+  };
+
+  const addApp = () => {
+    const app = newApp.trim().toLowerCase();
+    if (!app || !status) return;
+    const name = app.endsWith(".exe") ? app : `${app}.exe`;
+    setNewApp("");
+    void save({ ignoredApps: [...status.ignoredApps, name] });
+  };
+
+  if (!status) return null;
+  return (
+    <>
+      <section className="setting">
+        <div>
+          <div className="setting__title">Clipboard history</div>
+          <div className="setting__desc">
+            {status.enabled
+              ? "Keeps what you copy, encrypted on this PC. Turning it off deletes it all."
+              : "Off. Search and paste what you copied recently. Never leaves this PC."}
+          </div>
+        </div>
+        <button
+          role="switch"
+          aria-checked={status.enabled}
+          aria-label="Clipboard history"
+          className={`switch ${status.enabled ? "switch--on" : ""}`}
+          onClick={() => void save({ enabled: !status.enabled })}
+        >
+          <span className="switch__thumb" />
+        </button>
+      </section>
+
+      {status.enabled && (
+        <div className="setting-group">
+          <section className="setting">
+            <div>
+              <div className="setting__title">Keep items for</div>
+            </div>
+            <Segmented
+              value={String(status.retentionDays)}
+              options={[
+                { value: "1", label: "1 day" },
+                { value: "7", label: "7 days" },
+                { value: "30", label: "30 days" },
+              ]}
+              onChange={(v) => void save({ retentionDays: Number(v) as ClipSettings["retentionDays"] })}
+            />
+          </section>
+
+          <section className="setting">
+            <div>
+              <div className="setting__title">Password-like copies</div>
+              <div className="setting__desc">Hidden and kept in memory only, never saved.</div>
+            </div>
+            <Segmented
+              value={status.sensitive}
+              options={[
+                { value: "mask", label: "Hide for 1 min" },
+                { value: "skip", label: "Don't keep" },
+              ]}
+              onChange={(v) => void save({ sensitive: v as ClipSettings["sensitive"] })}
+            />
+          </section>
+
+          <section className="setting">
+            <div>
+              <div className="setting__title">Clear passwords from the clipboard</div>
+              <div className="setting__desc">After a minute, unless you've copied something else since.</div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={status.clearSensitive}
+              aria-label="Clear passwords from the clipboard"
+              className={`switch ${status.clearSensitive ? "switch--on" : ""}`}
+              onClick={() => void save({ clearSensitive: !status.clearSensitive })}
+            >
+              <span className="switch__thumb" />
+            </button>
+          </section>
+
+          <section className="setting setting--column">
+            <div>
+              <div className="setting__title">Never record copies from</div>
+              <div className="setting__desc">Password managers are included. Add apps by their file name.</div>
+            </div>
+            <div className="chips">
+              {status.ignoredApps.map((app) => (
+                <span key={app} className="chip">
+                  {app.replace(/\.exe$/, "")}
+                  <button
+                    aria-label={`Remove ${app}`}
+                    onClick={() => void save({ ignoredApps: status.ignoredApps.filter((a) => a !== app) })}
+                  >
+                    ×
+                  </button>
+                </span>
+              ))}
+              <input
+                className="chip-input"
+                value={newApp}
+                onChange={(e) => setNewApp(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    addApp();
+                  }
+                }}
+                placeholder="Add app, e.g. mybank.exe"
+                spellCheck={false}
+                maxLength={64}
+              />
+            </div>
+          </section>
+        </div>
+      )}
+    </>
   );
 }

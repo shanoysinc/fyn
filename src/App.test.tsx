@@ -506,6 +506,15 @@ describe("screens", () => {
     await screen.findByRole("heading", { name: "Settings" });
   });
 
+  it("the Clipboard History command opens clipboard history", async () => {
+    const { user, input } = await setup();
+    await user.type(input, "clipboard");
+    await screen.findByText("Commands");
+    expect(selectedRow()).toHaveTextContent("Clipboard History");
+    await user.keyboard("{Enter}");
+    await screen.findByPlaceholderText("Search clipboard history…");
+  });
+
   it("commands can open the emoji and colour pickers", async () => {
     const { user, input } = await setup();
     await user.type(input, "pick color");

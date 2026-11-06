@@ -44,6 +44,39 @@ export interface PathInfo {
   isDir: boolean;
 }
 
+export interface ClipSettings {
+  enabled: boolean;
+  retentionDays: 1 | 7 | 30;
+  /** Password-like copies: "mask" = keep masked for a minute; "skip" = don't keep. */
+  sensitive: "mask" | "skip";
+  /** Clear the clipboard a minute after a password-like copy. */
+  clearSensitive: boolean;
+  /** App file names (e.g. "keepassxc.exe") whose copies are never recorded. */
+  ignoredApps: string[];
+}
+
+export interface ClipStatus extends ClipSettings {
+  paused: boolean;
+  /** Unix seconds when a timed pause ends; null if open-ended or not paused. */
+  pausedUntil: number | null;
+}
+
+export interface ClipEntry {
+  /** Negative for password-like items (memory only). */
+  id: number;
+  /** null for password-like items: only ever shown masked unless revealed. */
+  text: string | null;
+  truncated: boolean;
+  sensitive: boolean;
+  chars: number;
+  /** App it was copied from, e.g. "code.exe". */
+  source: string | null;
+  /** Unix seconds. */
+  created: number;
+  /** Seconds left for a password-like item. */
+  expiresIn: number | null;
+}
+
 export interface UpdateInfo {
   version: string;
   currentVersion: string;
@@ -88,6 +121,18 @@ export const api = {
   uiReady: () => invoke<"showing" | "visible" | "hidden">("ui_ready"),
   checkForUpdate: () => invoke<UpdateInfo | null>("check_for_update"),
   installUpdate: () => invoke<void>("install_update"),
+  clipboardStatus: () => invoke<ClipStatus>("clipboard_status"),
+  setClipboardSettings: (settings: ClipSettings) => invoke<ClipStatus>("set_clipboard_settings", { settings }),
+  clipboardList: () => invoke<ClipEntry[]>("clipboard_list"),
+  /** The only way a password-like item's text reaches the UI. */
+  clipboardReveal: (id: number) => invoke<string>("clipboard_reveal", { id }),
+  clipboardCopy: (id: number) => invoke<void>("clipboard_copy", { id }),
+  /** Hides Fyn and pastes into the app that was in front. */
+  clipboardPaste: (id: number) => invoke<void>("clipboard_paste", { id }),
+  clipboardDelete: (id: number) => invoke<void>("clipboard_delete", { id }),
+  clipboardClear: () => invoke<void>("clipboard_clear"),
+  /** Minutes to pause (0 = until resumed), or null to resume. */
+  clipboardPause: (minutes: number | null) => invoke<ClipStatus>("clipboard_pause", { minutes }),
 };
 
 export const events = {
@@ -96,6 +141,7 @@ export const events = {
   appsChanged: "fyn://apps-changed",
   openSettings: "fyn://open-settings",
   updateAvailable: "fyn://update-available",
+  clipboardChanged: "fyn://clipboard-changed",
 } as const;
 
 export function on<T = unknown>(event: string, handler: (payload: T) => void): () => void {

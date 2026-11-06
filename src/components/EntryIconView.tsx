@@ -91,6 +91,13 @@ const PATHS: Record<GlyphName, ReactNode> = {
     </>
   ),
   sliders: <path d="M5 7h9M18 7h1M5 17h1M10 17h9M16 5v4M8 15v4" />,
+  clipboard: (
+    <>
+      <rect x="6" y="4.5" width="12" height="16" rx="2" />
+      <path d="M9.5 4.5V4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v.5M9 10h6M9 14h4" />
+    </>
+  ),
+  text: <path d="M5 7h14M5 12h14M5 17h9" />,
   grid: (
     <>
       <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />

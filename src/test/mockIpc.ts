@@ -2,7 +2,8 @@
 //   vi.mock("<path>/lib/ipc", async (orig) => mockIpcModule(await orig()));
 import { vi } from "vitest";
 import type * as Ipc from "../lib/ipc";
-import { makeHome, makeSettings } from "./fixtures";
+import type { ClipSettings } from "../lib/ipc";
+import { makeClipStatus, makeHome, makeSettings } from "./fixtures";
 
 type Handler = (payload: unknown) => void;
 const handlers = new Map<string, Set<Handler>>();
@@ -33,6 +34,15 @@ export const api = {
   uiReady: vi.fn(),
   checkForUpdate: vi.fn(),
   installUpdate: vi.fn(),
+  clipboardStatus: vi.fn(),
+  setClipboardSettings: vi.fn(),
+  clipboardList: vi.fn(),
+  clipboardReveal: vi.fn(),
+  clipboardCopy: vi.fn(),
+  clipboardPaste: vi.fn(),
+  clipboardDelete: vi.fn(),
+  clipboardClear: vi.fn(),
+  clipboardPause: vi.fn(),
 } satisfies Record<keyof typeof Ipc.api, unknown>;
 
 /** Restore every fake to its default answer. Call in beforeEach. */
@@ -47,6 +57,10 @@ export function resetApi() {
   api.runSystemCommand.mockResolvedValue(null);
   api.checkForUpdate.mockResolvedValue(null);
   api.setHotkey.mockImplementation(async (h: string) => h);
+  api.clipboardStatus.mockResolvedValue(makeClipStatus());
+  api.clipboardList.mockResolvedValue([]);
+  api.setClipboardSettings.mockImplementation(async (s: ClipSettings) => ({ ...s, paused: false, pausedUntil: null }));
+  api.clipboardPause.mockImplementation(async (m: number | null) => makeClipStatus({ paused: m !== null }));
 }
 
 /** Simulate a backend event (fyn://shown, fyn://hidden, …). */
