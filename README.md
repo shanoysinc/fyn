@@ -113,31 +113,38 @@ In dev builds, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> (or click **D
 
 ### Releasing (with auto-update)
 
-Updates are signed. The updater's public key is in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`), and the matching private key must stay secret.
+Releases are built and published by GitHub Actions (`.github/workflows/release.yml`). Installed copies of Fyn check `https://github.com/shanoysinc/fyn/releases/latest/download/latest.json` for updates, and each update is verified against the public key in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`) before it installs.
 
-1. Bump `version` in `src-tauri/tauri.conf.json`, `src-tauri/Cargo.toml` and `package.json`.
-2. Build with the signing key available:
-   ```powershell
-   $env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\fyn.key"
-   $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
-   bun tauri build --config src-tauri/tauri.release.conf.json
-   ```
-   This also produces the `.sig` signature files next to the installers in `src-tauri/target/release/bundle`.
-3. Create a GitHub release and upload the installers, their `.sig` files and a `latest.json`:
-   ```json
-   {
-     "version": "0.2.0",
-     "notes": "What changed",
-     "pub_date": "2026-11-05T00:00:00Z",
-     "platforms": {
-       "windows-x86_64": {
-         "signature": "<contents of the -setup.exe.sig file>",
-         "url": "https://github.com/OWNER/fyn/releases/download/v0.2.0/Fyn_0.2.0_x64-setup.exe"
-       }
-     }
-   }
-   ```
-   `plugins.updater.endpoints` points at `releases/latest/download/latest.json`, so the newest release is always the one Fyn checks.
+**One-time setup:** add the private signing key as a repository secret (**Settings → Secrets and variables → Actions → New repository secret**):
+
+| Secret | Value |
+| --- | --- |
+| `TAURI_SIGNING_PRIVATE_KEY` | The full contents of `%USERPROFILE%\.tauri\fyn.key` |
+| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Only if the key has a password (the current one doesn't, so skip it) |
+
+Keep a backup of `fyn.key` somewhere safe. Without it, no future update can be signed and installed copies can never update again.
+
+**Each release** is one command, run on an up-to-date `main` with everything committed:
+
+```powershell
+bun run release patch    # 0.1.0 → 0.1.1  (fixes)
+bun run release minor    # 0.1.0 → 0.2.0  (new features)
+bun run release major    # 0.1.0 → 1.0.0
+bun run release 0.3.0    # an exact version
+bun run release patch --dry-run   # show what would happen, change nothing
+```
+
+`scripts/release.ts` checks you're on `main` with nothing uncommitted and in sync with GitHub, sets the version in `package.json`, `tauri.conf.json`, `Cargo.toml` and `Cargo.lock`, asks you to confirm, then commits, tags `vX.Y.Z` and pushes both. The tag starts the release workflow, which builds the signed installers and publishes a GitHub release with `latest.json`. Installed copies notice it about 15 seconds after they next start (or right away via **Settings → Updates → Check for Updates**).
+
+For the very first release, `bun run release 0.1.0` tags the current version as-is.
+
+To build signed installers locally instead:
+
+```powershell
+$env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\fyn.key"
+$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
+bun tauri build --config src-tauri/tauri.release.conf.json
+```
 
 ## Architecture
 
