@@ -3,6 +3,7 @@ name = "fyn"
 version = "0.1.1"
 description = "Fyn – a fast, keyboard-first launcher for Windows"
 edition = "2021"
+license = "MIT"
 rust-version = "1.80"
 
 [build-dependencies]

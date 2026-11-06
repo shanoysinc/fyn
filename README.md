@@ -202,6 +202,10 @@ src/
 - Beta update channel ("Get beta updates" in Settings)
 - A magnifier for the eyedropper, for picking small details
 
+## License
+
+[MIT](LICENSE). Use it, change it, share it; keep the copyright notice.
+
 ## Credits
 
 Emoji data from [unicode-emoji-json](https://github.com/muan/unicode-emoji-json) and [emojilib](https://github.com/muan/emojilib). The settings icon comes from [Lucide](https://lucide.dev) (ISC licence).

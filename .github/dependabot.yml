@@ -1,0 +1,16 @@
+# Keeps the GitHub Actions used by the workflows up to date. The release workflow pins
+# every action to an exact commit; Dependabot proposes the new commit (and updates the
+# version comment) when an action releases, so the pins don't go stale.
+#
+# npm and Cargo packages are left out on purpose for now, to avoid a stream of PRs.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    groups:
+      actions:
+        patterns: ["*"] # one PR for all action updates
+    commit-message:
+      prefix: ci
