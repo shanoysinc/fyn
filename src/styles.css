@@ -441,9 +441,9 @@ button {
 .settings__header {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   height: 58px;
-  padding: 0 12px;
+  padding: 0 18px;
   border-bottom: 1px solid var(--line);
 }
 
@@ -627,8 +627,37 @@ button {
 }
 
 .back-btn {
-  margin-left: -6px;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
   flex-shrink: 0;
+  border-radius: 8px;
+  background: var(--kbd-bg);
+  color: var(--text);
+  transition: background 80ms, transform 80ms;
+}
+
+.back-btn:hover {
+  background: var(--selected);
+}
+
+.back-btn:active {
+  transform: scale(0.94);
+}
+
+.back-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+.settings__hint {
+  margin-left: auto;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--text-3);
 }
 
 /* ---------- emoji picker ---------- */

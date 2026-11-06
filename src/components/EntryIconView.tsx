@@ -2,6 +2,10 @@ import type { ReactNode } from "react";
 import type { EntryIcon, GlyphName } from "../lib/entries";
 import { AppIcon } from "./AppIcon";
 
+/** Symmetric 8-tooth gear outline (Lucide "settings", ISC licence); pair with a r=3 centre circle. */
+export const GEAR_PATH =
+  "M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z";
+
 // 24×24 stroke icons drawn on a tinted tile, so built-in commands sit nicely next to app icons.
 const PATHS: Record<GlyphName, ReactNode> = {
   lock: (
@@ -50,8 +54,8 @@ const PATHS: Record<GlyphName, ReactNode> = {
   droplet: <path d="M12 3.5s6 6.4 6 10.5a6 6 0 0 1-12 0c0-4.1 6-10.5 6-10.5Z" />,
   gear: (
     <>
+      <path d={GEAR_PATH} />
       <circle cx="12" cy="12" r="3" />
-      <path d="M12 3v2.5M12 18.5V21M3 12h2.5M18.5 12H21M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M5.6 18.4l1.8-1.8M16.6 7.4l1.8-1.8" />
     </>
   ),
   sparkle: <path d="M12 3l2 6 6 2-6 2-2 6-2-6-6-2 6-2 2-6Z" />,

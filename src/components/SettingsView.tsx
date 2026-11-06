@@ -13,6 +13,7 @@ import {
 } from "../lib/ipc";
 import { fromEvent, toKeys } from "../lib/hotkey";
 import { Kbd } from "./Kbd";
+import { BackButton } from "./ViewHeader";
 
 interface Props {
   onBack: () => void;
@@ -169,10 +170,11 @@ export function SettingsView({ onBack, onShowWelcome, update, onUpdate }: Props)
   return (
     <div className="settings">
       <header className="settings__header">
-        <button className="icon-btn" onClick={onBack} aria-label="Back">
-          ←
-        </button>
+        <BackButton onBack={onBack} />
         <h1>Settings</h1>
+        <span className="settings__hint">
+          <Kbd keys={["Esc"]} /> to go back
+        </span>
       </header>
 
       <div className="settings__body">
