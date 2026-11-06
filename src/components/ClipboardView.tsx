@@ -18,6 +18,26 @@ interface Toast {
 const appName = (exe: string | null) => (exe ? exe.replace(/\.exe$/i, "") : null);
 
 /** What an item is, for its icon. */
+type Filter = "all" | "text" | "image";
+
+const FILTERS: { id: Filter; label: string }[] = [
+  { id: "all", label: "All" },
+  { id: "text", label: "Text" },
+  { id: "image", label: "Images" },
+];
+
+/** Why the list is empty, for the current filter and search. */
+function emptyMessage(status: ClipStatus, filter: Filter, hasItems: boolean, query: string): string {
+  if (query.trim()) return `No matches for “${query.trim()}”`;
+  if (filter === "image" && !status.includeImages) return "Images are off. Turn them on to keep screenshots and copied pictures.";
+  if (filter === "image") return "No images yet. Copy a picture or take a screenshot.";
+  if (filter === "text" && hasItems) return "No text yet.";
+  if (status.paused) return "Paused. New copies aren't recorded.";
+  return status.includeImages
+    ? "Nothing yet. Copy some text or an image and it shows up here."
+    : "Nothing yet. Copy some text and it shows up here.";
+}
+
 /** Words that find images in search (they have no text of their own). */
 const IMAGE_WORDS = ["image", "screenshot", "picture", "photo", "png"];
 
@@ -57,6 +77,9 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
   const [query, setQuery] = useState("");
   const [selected, setSelected] = useState("");
   const [panel, setPanel] = useState(false);
+  /** Where a right-click opened the actions menu; null = above the footer (Ctrl+K). */
+  const [anchor, setAnchor] = useState<{ x: number; y: number } | null>(null);
+  const [filter, setFilter] = useState<Filter>("all");
   const [toast, setToast] = useState<Toast | null>(null);
   const [confirmClear, setConfirmClear] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
@@ -87,14 +110,15 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
 
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
-    if (!q) return items;
     return items.filter(
       (i) =>
-        i.text.toLowerCase().includes(q) ||
-        appName(i.source)?.toLowerCase().includes(q) ||
-        (i.kind === "image" && IMAGE_WORDS.some((w) => w.startsWith(q))),
+        (filter === "all" || i.kind === filter) &&
+        (!q ||
+          i.text.toLowerCase().includes(q) ||
+          appName(i.source)?.toLowerCase().includes(q) ||
+          (i.kind === "image" && IMAGE_WORDS.some((w) => w.startsWith(q)))),
     );
-  }, [items, query]);
+  }, [items, query, filter]);
 
   // Keep the selection on an item that exists.
   useEffect(() => {
@@ -198,7 +222,11 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
     const ctrl = e.ctrlKey || e.metaKey;
     if (ctrl && e.key.toLowerCase() === "k") {
       e.preventDefault();
+      setAnchor(null);
       setPanel((p) => !p);
+    } else if (ctrl && !e.shiftKey && /^[1-3]$/.test(e.key)) {
+      e.preventDefault();
+      setFilter(FILTERS[Number(e.key) - 1].id);
     } else if (ctrl && e.key === "Enter") {
       e.preventDefault();
       void run("copy");
@@ -241,18 +269,27 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
             spellCheck={false}
             maxLength={256}
           />
+          <div className="segmented segmented--compact" role="radiogroup" aria-label="Show">
+            {FILTERS.map((f, i) => (
+              <button
+                key={f.id}
+                role="radio"
+                aria-checked={filter === f.id}
+                className={`segmented__item ${filter === f.id ? "segmented__item--on" : ""}`}
+                onMouseDown={(e) => e.preventDefault()} // keep focus in the search box
+                onClick={() => setFilter(f.id)}
+                title={`${f.label} (Ctrl+${i + 1})`}
+              >
+                {f.label}
+              </button>
+            ))}
+          </div>
         </ViewHeader>
 
         <div className="clip">
           <Command.List className="list clip__list">
-            {items.length === 0 ? (
-              <div className="empty">
-                {status.paused ? "Paused. New copies aren't recorded." : status.includeImages
-                    ? "Nothing yet. Copy some text or an image and it shows up here."
-                    : "Nothing yet. Copy some text and it shows up here."}
-              </div>
-            ) : (
-              <Command.Empty className="empty">No matches for “{query}”</Command.Empty>
+            {visible.length === 0 && (
+              <div className="empty">{emptyMessage(status, filter, items.length > 0, query)}</div>
             )}
             {visible.map((entry) => (
               <Command.Item
@@ -260,6 +297,13 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
                 value={String(entry.id)}
                 className="row clip__row"
                 onSelect={() => void run("paste", entry)}
+                onContextMenu={(e) => {
+                  // Right-click: select the item and open its actions at the pointer.
+                  e.preventDefault();
+                  setSelected(String(entry.id));
+                  setAnchor({ x: e.clientX, y: e.clientY });
+                  setPanel(true);
+                }}
               >
                 <ClipIcon entry={entry} />
                 <span className="row__name">{label(entry)}</span>
@@ -345,7 +389,13 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
               <span className="footer__divider" />
             </>
           )}
-          <button className="footer__action" onClick={() => setPanel((p) => !p)}>
+          <button
+            className="footer__action"
+            onClick={() => {
+              setAnchor(null);
+              setPanel((p) => !p);
+            }}
+          >
             Actions <Kbd keys={["Ctrl", "K"]} />
           </button>
         </div>
@@ -353,8 +403,9 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
 
       {panel && (
         <ActionPanel
-          title={current ? "Clipboard item" : "Clipboard history"}
+          title={current ? (current.kind === "image" ? "Image" : "Clipboard item") : "Clipboard history"}
           actions={actions}
+          anchor={anchor}
           onRun={(id) => void run(id)}
           onClose={() => {
             setPanel(false);

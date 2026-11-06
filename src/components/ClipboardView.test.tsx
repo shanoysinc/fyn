@@ -1,4 +1,4 @@
-import { act, render, screen, waitFor } from "@testing-library/react";
+import { act, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { TINY_PNG, makeClip, makeClipStatus, makeImageClip, makeSettings } from "../test/fixtures";
@@ -321,5 +321,75 @@ describe("turning images on from clipboard history", () => {
     render(<ClipboardView onBack={vi.fn()} />);
     await screen.findByPlaceholderText("Search clipboard history…");
     expect(screen.queryByRole("button", { name: /Images are off/ })).not.toBeInTheDocument();
+  });
+});
+
+describe("right-click and filters", () => {
+  const SHOT = makeImageClip({ id: 7 });
+
+  beforeEach(() => {
+    api.clipboardStatus.mockResolvedValue(makeClipStatus({ includeImages: true }));
+    api.clipboardList.mockResolvedValue([SHOT, LINK, NOTE]);
+    api.clipboardImage.mockResolvedValue(TINY_PNG);
+  });
+
+  async function setupAll() {
+    const user = userEvent.setup();
+    render(<ClipboardView onBack={vi.fn()} />);
+    await screen.findByPlaceholderText("Search clipboard history…");
+    await waitFor(() => expect(document.querySelectorAll(".clip__row")).toHaveLength(3));
+    return user;
+  }
+
+  const rowNames = () => [...document.querySelectorAll(".clip__row .row__name")].map((n) => n.textContent);
+
+  it("right-click opens the item's actions at the pointer, and Delete deletes that item", async () => {
+    const user = await setupAll();
+    const noteRow = document.querySelectorAll(".clip__row")[2];
+    fireEvent.contextMenu(noteRow, { clientX: 120, clientY: 140 });
+    await waitFor(() => expect(document.querySelector(".actions")).toBeInTheDocument());
+    expect(noteRow).toHaveAttribute("data-selected", "true"); // the right-clicked item
+    expect(document.querySelector<HTMLElement>(".actions")!.style.left).not.toBe("");
+    await user.click(screen.getByText("Delete"));
+    expect(api.clipboardDelete).toHaveBeenCalledWith(NOTE.id);
+  });
+
+  it("right-click offers paste and copy too", async () => {
+    const user = await setupAll();
+    fireEvent.contextMenu(document.querySelectorAll(".clip__row")[0], { clientX: 10, clientY: 10 });
+    await user.click(await screen.findByText("Copy to Clipboard"));
+    expect(api.clipboardCopy).toHaveBeenCalledWith(SHOT.id);
+  });
+
+  it("filters to text or images with the tabs", async () => {
+    const user = await setupAll();
+    await user.click(screen.getByRole("radio", { name: "Images" }));
+    expect(rowNames()).toEqual(["Image · 1920 × 1080"]);
+    await user.click(screen.getByRole("radio", { name: "Text" }));
+    expect(rowNames()).toEqual(["https://github.com/shanoysinc/fyn", "Meeting moved to 3pm"]);
+    await user.click(screen.getByRole("radio", { name: "All" }));
+    expect(rowNames()).toHaveLength(3);
+  });
+
+  it("Ctrl+1/2/3 switch filters, and filters combine with search", async () => {
+    const user = await setupAll();
+    await user.keyboard("{Control>}3{/Control}");
+    expect(screen.getByRole("radio", { name: "Images" })).toHaveAttribute("aria-checked", "true");
+    expect(rowNames()).toHaveLength(1);
+    await user.keyboard("{Control>}2{/Control}");
+    await user.type(screen.getByPlaceholderText("Search clipboard history…"), "github");
+    await waitFor(() => expect(rowNames()).toEqual(["https://github.com/shanoysinc/fyn"]));
+    await user.keyboard("{Control>}1{/Control}");
+    expect(screen.getByRole("radio", { name: "All" })).toHaveAttribute("aria-checked", "true");
+  });
+
+  it("explains an empty Images tab when images are off", async () => {
+    api.clipboardStatus.mockResolvedValue(makeClipStatus({ includeImages: false }));
+    api.clipboardList.mockResolvedValue([NOTE]);
+    const user = userEvent.setup();
+    render(<ClipboardView onBack={vi.fn()} />);
+    await screen.findByPlaceholderText("Search clipboard history…");
+    await user.click(screen.getByRole("radio", { name: "Images" }));
+    expect(screen.getByText(/Images are off\. Turn them on/)).toBeInTheDocument();
   });
 });

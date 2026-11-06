@@ -1487,3 +1487,14 @@ img.app-icon--loaded {
   background: var(--hover);
   color: var(--accent);
 }
+
+/* Smaller segmented control for headers (e.g. clipboard history's All / Text / Images). */
+.segmented--compact .segmented__item {
+  height: 24px;
+  padding: 0 10px;
+  font-size: 12px;
+}
+
+.search .segmented--compact {
+  flex-shrink: 0;
+}
