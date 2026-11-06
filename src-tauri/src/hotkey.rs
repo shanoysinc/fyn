@@ -6,11 +6,11 @@ use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut};
 use crate::state::AppState;
 
 /// Dev builds default to a different shortcut so "Fyn Dev" and an installed Fyn can run
-/// side by side without fighting over Ctrl+Space.
+/// side by side without fighting over Alt+Space.
 #[cfg(not(debug_assertions))]
-pub const DEFAULT: &str = "Ctrl+Space";
+pub const DEFAULT: &str = "Alt+Space";
 #[cfg(debug_assertions)]
-pub const DEFAULT: &str = "Ctrl+Shift+Space";
+pub const DEFAULT: &str = "Alt+Shift+Space";
 pub const AUTOSTART_FLAG: &str = "--autostart";
 const MAX_LEN: usize = 64;
 

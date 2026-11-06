@@ -6,7 +6,7 @@
 
 <p align="center">
   A fast, keyboard-first launcher for Windows 11.<br />
-  Press <kbd>Ctrl</kbd>+<kbd>Space</kbd>, type a few letters, press <kbd>Enter</kbd>.
+  Press <kbd>Alt</kbd>+<kbd>Space</kbd>, type a few letters, press <kbd>Enter</kbd>.
 </p>
 
 <p align="center">
@@ -51,7 +51,7 @@
 
 | Keys | Action |
 | --- | --- |
-| <kbd>Ctrl</kbd>+<kbd>Space</kbd> | Show / hide Fyn (configurable) |
+| <kbd>Alt</kbd>+<kbd>Space</kbd> | Show / hide Fyn (configurable) |
 | <kbd>↑</kbd> <kbd>↓</kbd> / <kbd>Enter</kbd> | Move / run |
 | <kbd>Ctrl</kbd>+<kbd>K</kbd> | All actions for the selected item |
 | <kbd>Ctrl</kbd>+<kbd>Enter</kbd> | Show in File Explorer |
@@ -66,7 +66,7 @@
 
 ## Install
 
-Download the latest `.msi` or `-setup.exe` from the [Releases](../../releases) page and run it. Fyn starts in the tray. Press <kbd>Ctrl</kbd>+<kbd>Space</kbd> to open it.
+Download the latest `.msi` or `-setup.exe` from the [Releases](../../releases) page and run it. Fyn starts in the tray. Press <kbd>Alt</kbd>+<kbd>Space</kbd> to open it.
 
 Installed copies update themselves: Fyn checks for a new version shortly after it starts. You can also check from **Settings → Updates**.
 
@@ -102,7 +102,7 @@ bun run app:build     # local release build + MSI / NSIS installers
 | | Installed Fyn | Fyn Dev |
 | --- | --- | --- |
 | Data (favorites, usage, settings) | `%LOCALAPPDATA%\dev.fyn.launcher` | `%LOCALAPPDATA%\dev.fyn.launcher.dev` |
-| Default shortcut | <kbd>Ctrl</kbd>+<kbd>Space</kbd> | <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> |
+| Default shortcut | <kbd>Alt</kbd>+<kbd>Space</kbd> | <kbd>Alt</kbd>+<kbd>Shift</kbd>+<kbd>Space</kbd> |
 | Launch at login | On by default | Never registered |
 | Tray name | Fyn | Fyn Dev |
 
@@ -177,13 +177,30 @@ src/
 
 ## Roadmap
 
-- Unit and currency conversion in the calculator (`5 km in mi`)
-- Clipboard history
+### ✅ Shipped in 0.1
+
+- App search with fuzzy matching, frecency ranking, favorites (icon row or list) and suggestions
+- Calculator, web search with site prefixes, open URLs and paths
+- System commands (lock, sleep, restart, shut down, sign out, empty Recycle Bin, Windows dark mode) and 35+ Windows Settings pages
+- Emoji picker; color picker with HEX/RGB/HSL conversion and a screen eyedropper
+- Right-click actions menu, welcome tour, light/dark/system theme for Fyn, launch at login
+- Signed auto-updates, one-command releases (`bun run release`), CI with ~330 tests
+
+### 🔜 Next
+
+- **Code-signed installer**, so Windows stops showing the "isn't commonly downloaded" / SmartScreen warning
+- **Unit and currency conversion** in the calculator (`5 km in mi`, `20 usd in eur`)
+- **Clipboard history**: search and paste anything you copied recently
+- **Pin built-in commands, Settings pages and websites** to Favorites, not just apps
+- **Quicklinks**: saved searches and links with a placeholder (`jira {query}`)
+
+### 💡 Later
+
 - File search (Everything SDK / Windows Search)
-- Window switcher
-- Snippets and aliases
-- Pin built-in commands and Settings pages to Favorites
-- Extension API
+- Window switcher, and window snapping (halves, thirds, other monitor)
+- Snippets and aliases (`;email` → your address, `ps` → Photoshop)
+- Beta update channel ("Get beta updates" in Settings)
+- A magnifier for the eyedropper, for picking small details
 
 ## Credits
 

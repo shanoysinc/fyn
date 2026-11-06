@@ -60,7 +60,7 @@ export function WelcomeView({ settings, onDone, onChangeHotkey }: Props) {
 
       <div className="welcome__hotkey">
         <span>Open Fyn from anywhere with</span>
-        <Kbd keys={toKeys(settings?.hotkey ?? "Ctrl+Space")} />
+        <Kbd keys={toKeys(settings?.hotkey ?? "Alt+Space")} />
         <button className="btn btn--small" onClick={onChangeHotkey}>
           Change
         </button>
