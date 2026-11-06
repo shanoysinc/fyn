@@ -78,7 +78,7 @@ Installed copies update themselves: Fyn checks for a new version shortly after i
    winget install Microsoft.WindowsSDK.10.0.26100
    ```
 2. **Rust**: the exact toolchain is pinned in `rust-toolchain.toml` and installed automatically by rustup.
-3. **Node 20+**.
+3. **[Bun](https://bun.sh) 1.3+** (package manager and script runner): `powershell -c "irm bun.sh/install.ps1 | iex"`. Vite and Vitest also need **Node 22.22+** on your PATH.
 4. **WebView2**: preinstalled on Windows 11.
 
 > **Git Bash users:** if a build fails at the link step, Git's `/usr/bin/link` is shadowing MSVC's `link.exe`. Run the commands from PowerShell or a *Developer PowerShell for VS*.
@@ -86,11 +86,12 @@ Installed copies update themselves: Fyn checks for a new version shortly after i
 ### Commands
 
 ```powershell
-npm install
-npm run app:dev       # run with hot reload
-npm run typecheck     # TypeScript
+bun install
+bun run app:dev       # run with hot reload
+bun run typecheck     # TypeScript
+bun run test          # frontend tests (not `bun test`, which is Bun's own runner); test:all adds Rust
 cd src-tauri; cargo test; cargo clippy
-npm run app:build     # local release build + MSI / NSIS installers
+bun run app:build     # local release build + MSI / NSIS installers
 ```
 
 ### Developer menu
@@ -106,7 +107,7 @@ Updates are signed. The updater's public key is in `src-tauri/tauri.conf.json` (
    ```powershell
    $env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\fyn.key"
    $env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
-   npx tauri build --config src-tauri/tauri.release.conf.json
+   bun tauri build --config src-tauri/tauri.release.conf.json
    ```
    This also produces the `.sig` signature files next to the installers in `src-tauri/target/release/bundle`.
 3. Create a GitHub release and upload the installers, their `.sig` files and a `latest.json`:

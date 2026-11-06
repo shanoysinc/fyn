@@ -23,15 +23,24 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Bun installs packages and runs scripts; Vite and Vitest themselves run on Node.
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: 1.3.3
+
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: npm
 
-      - run: npm ci
-      - run: npm run typecheck
-      - run: npm test
-      - run: npm run build
+      - uses: actions/cache@v4
+        with:
+          path: ~/.bun/install/cache
+          key: bun-${{ runner.os }}-${{ hashFiles('bun.lock') }}
+
+      - run: bun install --frozen-lockfile
+      - run: bun run typecheck
+      - run: bun run test # Vitest (not `bun test`, which is Bun's own runner)
+      - run: bun run build
 
   rust:
     name: Rust (clippy, tests)
