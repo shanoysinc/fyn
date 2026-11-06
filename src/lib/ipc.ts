@@ -131,6 +131,72 @@ export interface CleanReport {
   errors: string[];
 }
 
+// ---------- mini apps: Port Killer ----------
+
+export interface PortEntry {
+  port: number;
+  pid: number;
+  /** Process file name, e.g. "node.exe". */
+  name: string;
+  path: string | null;
+  /** Local addresses it listens on, e.g. "127.0.0.1", "[::]". */
+  addresses: string[];
+  /** Part of Windows (or Fyn itself): can't be stopped from here. */
+  protected: boolean;
+  icon: string | null;
+}
+
+// ---------- mini apps: Pomodoro ----------
+
+export type PomodoroPhase = "focus" | "shortBreak" | "longBreak";
+
+export interface PomodoroSettings {
+  focusMin: number;
+  shortMin: number;
+  longMin: number;
+  /** A long break after this many focus sessions. */
+  longEvery: number;
+  autoStartBreaks: boolean;
+  autoStartFocus: boolean;
+  notify: boolean;
+}
+
+export interface PomodoroView {
+  phase: PomodoroPhase;
+  running: boolean;
+  /** Unix ms when the phase ends, while running. */
+  endsAt: number | null;
+  remainingMs: number;
+  durationMs: number;
+  /** Running, or paused part-way. */
+  active: boolean;
+  doneInCycle: number;
+  label: string | null;
+  settings: PomodoroSettings;
+}
+
+export interface PomodoroSession {
+  /** Unix seconds. */
+  started: number;
+  ended: number;
+  focusSecs: number;
+  completed: boolean;
+  label: string | null;
+}
+
+export interface PomodoroStats {
+  todayMinutes: number;
+  todaySessions: number;
+  /** Last 7 days, oldest first; `start` is local midnight in unix seconds. */
+  week: { start: number; minutes: number; sessions: number }[];
+  streak: number;
+  totalMinutes: number;
+  totalSessions: number;
+  bestDayMinutes: number;
+  /** Newest first. */
+  recent: PomodoroSession[];
+}
+
 export interface UpdateInfo {
   version: string;
   currentVersion: string;
@@ -193,6 +259,21 @@ export const api = {
   cleanScan: () => invoke<ScanReport>("clean_scan"),
   /** Deletes the chosen categories and items (by id; Rust works out the paths). */
   cleanRun: (categories: string[], items: string[]) => invoke<CleanReport>("clean_run", { categories, items }),
+  portsList: () => invoke<PortEntry[]>("ports_list"),
+  /** Stops the process if it's still `pid` on `port`; resolves to a message to show. */
+  portsKill: (port: number, pid: number) => invoke<string>("ports_kill", { port, pid }),
+  /** Copies without entering any clipboard history; optionally clears it after a minute. */
+  copySecret: (text: string, clearAfter: boolean) => invoke<void>("copy_secret", { text, clearAfter }),
+  readClipboardText: () => invoke<string | null>("read_clipboard_text"),
+  pomodoroState: () => invoke<PomodoroView>("pomodoro_state"),
+  pomodoroStart: (label?: string) => invoke<PomodoroView>("pomodoro_start", { label: label ?? null }),
+  pomodoroPause: () => invoke<PomodoroView>("pomodoro_pause"),
+  pomodoroSkip: () => invoke<PomodoroView>("pomodoro_skip"),
+  pomodoroReset: () => invoke<PomodoroView>("pomodoro_reset"),
+  setPomodoroSettings: (settings: PomodoroSettings) => invoke<PomodoroView>("set_pomodoro_settings", { settings }),
+  /** Local days, using this machine's time zone. */
+  pomodoroStats: () => invoke<PomodoroStats>("pomodoro_stats", { tzOffsetMin: -new Date().getTimezoneOffset() }),
+  pomodoroClearHistory: () => invoke<void>("pomodoro_clear_history"),
 };
 
 export const events = {
@@ -202,6 +283,7 @@ export const events = {
   openSettings: "fyn://open-settings",
   updateAvailable: "fyn://update-available",
   clipboardChanged: "fyn://clipboard-changed",
+  pomodoro: "fyn://pomodoro",
 } as const;
 
 export function on<T = unknown>(event: string, handler: (payload: T) => void): () => void {

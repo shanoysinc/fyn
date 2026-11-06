@@ -70,7 +70,7 @@ function ClipIcon({ entry }: { entry: ClipEntry }) {
 }
 
 /** A light wash of colour with the symbol in that colour: calmer than a solid block. */
-function SoftTile({ glyph, tint }: { glyph: GlyphName; tint: string }) {
+export function SoftTile({ glyph, tint }: { glyph: GlyphName; tint: string }) {
   return (
     <span className="glyph-tile glyph-tile--soft" style={{ "--tint": tint } as React.CSSProperties}>
       <Glyph name={glyph} size={15} />
@@ -78,7 +78,7 @@ function SoftTile({ glyph, tint }: { glyph: GlyphName; tint: string }) {
   );
 }
 
-function SourceIcon({ path, fallback }: { path: string | null; fallback: React.ReactNode }) {
+export function SourceIcon({ path, fallback }: { path: string | null; fallback: React.ReactNode }) {
   const [failed, setFailed] = useState(false);
   if (!path || failed) return <>{fallback}</>;
   return <img className="app-icon app-icon--loaded" src={iconUrl(path)} alt="" draggable={false} onError={() => setFailed(true)} />;

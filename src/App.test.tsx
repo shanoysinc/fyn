@@ -509,8 +509,12 @@ describe("screens", () => {
   it.each([
     ["Clipboard History", 0, "Search clipboard history…"],
     ["Clean Windows", 1, "Never touch anything named"],
-    ["Color Picker", 2, /Type a color/],
-    ["Emoji Picker", 3, "Search emoji…"],
+    ["Pomodoro", 2, "focused today"],
+    ["Port Killer", 3, "Filter by port or app…"],
+    ["Password Generator", 4, "Passphrase"],
+    ["Dev Tools", 5, "The result appears here as you type."],
+    ["Color Picker", 6, /Type a color/],
+    ["Emoji Picker", 7, "Search emoji…"],
   ] as const)("%s opened from Mini Apps goes back to Mini Apps", async (_name, index, marker) => {
     const { user } = await setup();
     await user.click(screen.getByRole("button", { name: "Mini Apps" }));

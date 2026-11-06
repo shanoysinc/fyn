@@ -3,7 +3,7 @@
 import { vi } from "vitest";
 import type * as Ipc from "../lib/ipc";
 import type { ClipSettings } from "../lib/ipc";
-import { makeClipStatus, makeHome, makeScanReport, makeSettings } from "./fixtures";
+import { makeClipStatus, makeHome, makePomodoro, makePomodoroStats, makeScanReport, makeSettings } from "./fixtures";
 
 type Handler = (payload: unknown) => void;
 const handlers = new Map<string, Set<Handler>>();
@@ -47,6 +47,18 @@ export const api = {
   setCleanSettings: vi.fn(),
   cleanScan: vi.fn(),
   cleanRun: vi.fn(),
+  portsList: vi.fn(),
+  portsKill: vi.fn(),
+  copySecret: vi.fn(),
+  readClipboardText: vi.fn(),
+  pomodoroState: vi.fn(),
+  pomodoroStart: vi.fn(),
+  pomodoroPause: vi.fn(),
+  pomodoroSkip: vi.fn(),
+  pomodoroReset: vi.fn(),
+  setPomodoroSettings: vi.fn(),
+  pomodoroStats: vi.fn(),
+  pomodoroClearHistory: vi.fn(),
 } satisfies Record<keyof typeof Ipc.api, unknown>;
 
 /** Restore every fake to its default answer. Call in beforeEach. */
@@ -69,6 +81,16 @@ export function resetApi() {
   api.cleanRun.mockResolvedValue({ freedBytes: 0, deletedFiles: 0, skippedFiles: 0, errors: [] });
   api.setClipboardSettings.mockImplementation(async (s: ClipSettings) => makeClipStatus({ ...s }));
   api.clipboardPause.mockImplementation(async (m: number | null) => makeClipStatus({ paused: m !== null }));
+  api.portsList.mockResolvedValue([]);
+  api.portsKill.mockResolvedValue("Stopped");
+  api.readClipboardText.mockResolvedValue(null);
+  api.pomodoroState.mockResolvedValue(makePomodoro());
+  api.pomodoroStart.mockResolvedValue(makePomodoro({ running: true, active: true, endsAt: Date.now() + 25 * 60_000 }));
+  api.pomodoroPause.mockResolvedValue(makePomodoro({ active: true, remainingMs: 20 * 60_000 }));
+  api.pomodoroSkip.mockResolvedValue(makePomodoro({ phase: "shortBreak", durationMs: 5 * 60_000, remainingMs: 5 * 60_000 }));
+  api.pomodoroReset.mockResolvedValue(makePomodoro());
+  api.setPomodoroSettings.mockImplementation(async (settings: Ipc.PomodoroSettings) => makePomodoro({ settings }));
+  api.pomodoroStats.mockResolvedValue(makePomodoroStats());
 }
 
 /** Simulate a backend event (fyn://shown, fyn://hidden, …). */

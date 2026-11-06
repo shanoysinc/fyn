@@ -48,6 +48,15 @@ impl Store {
                  created INTEGER NOT NULL,
                  source  TEXT,
                  data    BLOB NOT NULL
+             );
+             -- Pomodoro focus sessions, for history and stats.
+             CREATE TABLE IF NOT EXISTS pomodoro_sessions (
+                 id         INTEGER PRIMARY KEY AUTOINCREMENT,
+                 started    INTEGER NOT NULL,
+                 ended      INTEGER NOT NULL,
+                 focus_secs INTEGER NOT NULL,
+                 completed  INTEGER NOT NULL,
+                 label      TEXT
              );",
         )?;
         // Image support (added later): add the columns to databases created before it.
@@ -225,6 +234,41 @@ impl Store {
             self.conn.execute("DELETE FROM clipboard WHERE id = ?1", [id])?;
         }
         Ok(ids)
+    }
+
+    // ---------- pomodoro ----------
+
+    pub fn pomo_insert(&self, s: &crate::miniapps::pomodoro::Session) -> rusqlite::Result<()> {
+        self.conn.execute(
+            "INSERT INTO pomodoro_sessions (started, ended, focus_secs, completed, label) VALUES (?1, ?2, ?3, ?4, ?5)",
+            params![s.started, s.ended, s.focus_secs, s.completed, s.label],
+        )?;
+        Ok(())
+    }
+
+    pub fn pomo_all(&self) -> Vec<crate::miniapps::pomodoro::Session> {
+        let Ok(mut stmt) = self
+            .conn
+            .prepare_cached("SELECT started, ended, focus_secs, completed, label FROM pomodoro_sessions ORDER BY started")
+        else {
+            return Vec::new();
+        };
+        stmt.query_map([], |r| {
+            Ok(crate::miniapps::pomodoro::Session {
+                started: r.get(0)?,
+                ended: r.get(1)?,
+                focus_secs: r.get(2)?,
+                completed: r.get(3)?,
+                label: r.get(4)?,
+            })
+        })
+        .map(|rows| rows.filter_map(Result::ok).collect())
+        .unwrap_or_default()
+    }
+
+    pub fn pomo_clear(&self) -> rusqlite::Result<()> {
+        self.conn.execute("DELETE FROM pomodoro_sessions", [])?;
+        Ok(())
     }
 }
 

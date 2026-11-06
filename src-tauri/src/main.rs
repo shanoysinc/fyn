@@ -45,6 +45,7 @@ fn main() {
                 .build(),
         )
         .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_notification::init())
         .setup(|app| {
             let handle = app.handle().clone();
             let data_dir = app.path().app_local_data_dir()?;
@@ -61,6 +62,7 @@ fn main() {
             app.manage(AppState::new(data_dir, store, cached, hotkey.clone()));
 
             clipboard::init(&handle);
+            miniapps::init_pomodoro(&handle);
             hotkey::register_initial(&handle, &hotkey);
             tray::create(&handle)?;
             window::install(&handle);
@@ -114,6 +116,18 @@ fn main() {
             miniapps::set_clean_settings,
             miniapps::clean_scan,
             miniapps::clean_run,
+            miniapps::ports_list,
+            miniapps::ports_kill,
+            miniapps::copy_secret,
+            miniapps::read_clipboard_text,
+            miniapps::pomodoro_state,
+            miniapps::pomodoro_start,
+            miniapps::pomodoro_pause,
+            miniapps::pomodoro_skip,
+            miniapps::pomodoro_reset,
+            miniapps::set_pomodoro_settings,
+            miniapps::pomodoro_stats,
+            miniapps::pomodoro_clear_history,
             commands::ui_ready,
             commands::check_for_update,
             commands::install_update,

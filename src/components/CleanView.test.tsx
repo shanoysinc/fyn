@@ -125,8 +125,17 @@ describe("Mini Apps screen", () => {
   it("lists the mini apps with app icons, and opens the selected one with Enter", async () => {
     const { user, onOpen } = setupMini();
     const titles = [...document.querySelectorAll(".miniapp__title")].map((t) => t.textContent);
-    expect(titles).toEqual(["Clipboard History", "Clean Windows", "Color Picker", "Emoji Picker"]);
-    expect(document.querySelectorAll(".miniapp .mini-icon")).toHaveLength(4);
+    expect(titles).toEqual([
+      "Clipboard History",
+      "Clean Windows",
+      "Pomodoro",
+      "Port Killer",
+      "Password Generator",
+      "Dev Tools",
+      "Color Picker",
+      "Emoji Picker",
+    ]);
+    expect(document.querySelectorAll(".miniapp .mini-icon")).toHaveLength(8);
     await user.keyboard("{ArrowDown}{Enter}");
     expect(onOpen).toHaveBeenCalledWith("clean");
   });
@@ -150,10 +159,10 @@ describe("Mini Apps screen", () => {
     await user.keyboard("{ArrowDown}{Control>}{Shift>}P{/Shift}{/Control}");
     expect(onTogglePin).toHaveBeenLastCalledWith("cmd:fyn:clean-windows", "Clean Windows");
 
-    fireEvent.contextMenu(document.querySelectorAll(".miniapp")[3], { clientX: 50, clientY: 60 });
+    fireEvent.contextMenu(document.querySelectorAll(".miniapp")[7], { clientX: 50, clientY: 60 });
     await user.click(await screen.findByText("Add to Favorites", { selector: ".actions__item span" }));
     expect(onTogglePin).toHaveBeenLastCalledWith("cmd:fyn:emoji", "Emoji Picker");
-    fireEvent.contextMenu(document.querySelectorAll(".miniapp")[3], { clientX: 50, clientY: 60 });
+    fireEvent.contextMenu(document.querySelectorAll(".miniapp")[7], { clientX: 50, clientY: 60 });
     await user.click(await screen.findByText("Open", { selector: ".actions__item span" }));
     expect(onOpen).toHaveBeenCalledWith("emoji");
   });

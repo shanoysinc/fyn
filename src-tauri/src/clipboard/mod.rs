@@ -544,7 +544,7 @@ pub fn set_clipboard_settings(
 
 /// Icon of each installed app by its executable's file name ("code.exe" -> cached PNG),
 /// so clipboard items can show the app they were copied from.
-fn icons_by_exe(apps: &[crate::indexer::App]) -> std::collections::HashMap<String, String> {
+pub(crate) fn icons_by_exe(apps: &[crate::indexer::App]) -> std::collections::HashMap<String, String> {
     apps.iter()
         .filter_map(|a| {
             let exe = a.target.as_deref()?.rsplit(['\\', '/']).next()?.to_lowercase();
@@ -684,6 +684,32 @@ pub fn clipboard_pause(app: AppHandle, clip: State<ClipState>, minutes: Option<u
     Ok(result)
 }
 
+// ---------- helpers for mini apps ----------
+
+/// The text on the clipboard right now (for Dev Tools). Respects the "don't record"
+/// flags, so a password manager's copy is never read. At most 1 MB.
+pub fn read_text() -> Option<String> {
+    match win::read(HWND::default(), false) {
+        Ok(win::Read::Text(text)) if text.len() <= 1_000_000 => Some(text.to_string()),
+        _ => None,
+    }
+}
+
+/// Copy a secret without it entering any clipboard history, and (optionally) clear it
+/// from the clipboard after a minute if it's still there.
+pub fn copy_private(text: &str, clear_after: bool) -> Result<(), String> {
+    let seq = win::write_private(text)?;
+    if clear_after {
+        clear_later(seq);
+    }
+    Ok(())
+}
+
+/// Full program path of a process (e.g. C:\…\node.exe), if Windows lets us read it.
+pub fn process_path(pid: u32) -> Option<String> {
+    win::process_path(pid)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -794,3 +820,4 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 }
+

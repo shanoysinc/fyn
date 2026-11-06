@@ -17,13 +17,17 @@ export type View =
   | "collection"
   | "clipboard"
   | "miniapps"
-  | "clean";
+  | "clean"
+  | "pomodoro"
+  | "ports"
+  | "passwords"
+  | "devtools";
 
 export type GlyphName =
   | "lock" | "moon" | "restart" | "power" | "logout" | "trash" | "contrast"
   | "emoji" | "droplet" | "gear" | "sparkle" | "download" | "globe" | "search"
   | "folder" | "file" | "calculator" | "sliders" | "grid" | "clipboard" | "text" | "doc" | "broom" | "apps"
-  | "sparkles" | "eyedropper";
+  | "sparkles" | "eyedropper" | "timer" | "plug" | "key" | "code" | "copy" | "refresh" | "play" | "pause" | "skip" | "swap" | "flame" | "check";
 
 export type EntryIcon =
   | { kind: "app"; item: Item }

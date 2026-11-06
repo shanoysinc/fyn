@@ -217,6 +217,27 @@ pub fn write(text: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Put a secret (a generated password) on the clipboard, flagged so that clipboard
+/// monitors (Fyn's own history included) skip it and Windows' clipboard history (Win+V)
+/// and cloud sync don't keep it. Returns the clipboard sequence number afterwards.
+pub fn write_private(text: &str) -> Result<u32, String> {
+    let _open = Opened::open(None)?;
+    unsafe {
+        EmptyClipboard().map_err(|e| e.to_string())?;
+        let mut wide: Zeroizing<Vec<u16>> = Zeroizing::new(text.encode_utf16().chain(std::iter::once(0)).collect());
+        set_bytes(UNICODE_TEXT, std::slice::from_raw_parts(wide.as_ptr() as *const u8, wide.len() * 2))?;
+        wide.zeroize();
+        let zero = 0u32.to_le_bytes();
+        set_bytes(format(w!("ExcludeClipboardContentFromMonitorProcessing")), &zero)?;
+        set_bytes(format(w!("CanIncludeInClipboardHistory")), &zero)?;
+        set_bytes(format(w!("CanUploadToCloudClipboard")), &zero)?;
+    }
+    drop(_open);
+    let seq = sequence();
+    OWN_SEQUENCE.store(seq, Ordering::SeqCst);
+    Ok(seq)
+}
+
 unsafe fn set_bytes(format: u32, bytes: &[u8]) -> Result<(), String> {
     let mem = GlobalAlloc(GMEM_MOVEABLE, bytes.len().max(1)).map_err(|e| e.to_string())?;
     let ptr = GlobalLock(mem) as *mut u8;
@@ -254,14 +275,21 @@ pub fn foreground_app() -> Option<String> {
         if pid == 0 {
             return None;
         }
+        let path = process_path(pid)?;
+        path.rsplit(['\\', '/']).next().map(|f| f.to_lowercase())
+    }
+}
+
+/// Full path of a process's program, if Windows lets us read it.
+pub fn process_path(pid: u32) -> Option<String> {
+    unsafe {
         let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
         let mut buf = [0u16; 1024];
         let mut len = buf.len() as u32;
         let ok = QueryFullProcessImageNameW(process, PROCESS_NAME_WIN32, PWSTR(buf.as_mut_ptr()), &mut len);
         let _ = CloseHandle(process);
         ok.ok()?;
-        let path = String::from_utf16_lossy(&buf[..len as usize]);
-        path.rsplit(['\\', '/']).next().map(|f| f.to_lowercase())
+        Some(String::from_utf16_lossy(&buf[..len as usize]))
     }
 }
 

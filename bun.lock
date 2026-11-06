@@ -7,6 +7,7 @@
       "dependencies": {
         "@tauri-apps/api": "^2.12.4",
         "cmdk": "^1.1.1",
+        "diceware-wordlist-en-eff": "1.0.1",
         "emojilib": "^4.0.3",
         "react": "^19.3.1",
         "react-dom": "^19.3.1",
@@ -233,6 +234,8 @@
     "detect-libc": ["detect-libc@2.1.2", "", {}, "sha512-Btj2BOOO83o3WyH59e8MgXsxEQVcarkUOpEYrubB0urwnN10yQ364rsiByU11nZlqWYZm05i/of7io4mzihBtQ=="],
 
     "detect-node-es": ["detect-node-es@1.1.0", "", {}, "sha512-ypdmJU/TbBby2Dxibuv7ZLW3Bs1QEmM7nHjEANfohJLvE0XVujisn1qPJcZxg+qDucsr+bP6fLD1rPS3AhJ7EQ=="],
+
+    "diceware-wordlist-en-eff": ["diceware-wordlist-en-eff@1.0.1", "", {}, "sha512-GdvxQdhl23fqk5NxH4Q6xv9x5yrMZmyQ14Im5fMHvRyEX68qgjHU1C0i/Ba+GYld5qWSbyel0TbHuc5i08gDcA=="],
 
     "dom-accessibility-api": ["dom-accessibility-api@0.6.3", "", {}, "sha512-7ZgogeTnjuHbo+ct10G9Ffp0mif17idi0IyWNVA/wcwcm7NPOD/WEHVP3n7n3MhXqxoIYm8d6MuZohYWIZ4T3w=="],
 

@@ -15,6 +15,7 @@ tauri-plugin-global-shortcut = "2"
 tauri-plugin-single-instance = "2"
 tauri-plugin-autostart = "2"
 tauri-plugin-updater = "2"
+tauri-plugin-notification = "~2.7"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 rusqlite = { version = "0.32", features = ["bundled"] }
@@ -31,6 +32,8 @@ version = "0.61"
 features = [
   "Win32_Foundation",
   "Win32_Graphics_Gdi",
+  "Win32_NetworkManagement_IpHelper",
+  "Win32_Networking_WinSock",
   "Win32_Security_Cryptography",
   "Win32_Storage_FileSystem",
   "Win32_System_Com",

@@ -134,6 +134,54 @@ const PATHS: Record<GlyphName, ReactNode> = {
       <path d="M14 3.5V8h4.5M9 12.5h6M9 16h4" />
     </>
   ),
+  timer: (
+    <>
+      <circle cx="12" cy="13.5" r="7" />
+      <path d="M12 13.5V10M10 3h4M18.5 6.5l1.2-1.2" />
+    </>
+  ),
+  plug: (
+    <>
+      <path d="M9 3.5V8M15 3.5V8" />
+      <path d="M6.5 8h11v3a5.5 5.5 0 0 1-11 0Z" />
+      <path d="M12 16.5v4" />
+    </>
+  ),
+  key: (
+    <>
+      <circle cx="8" cy="15" r="4" />
+      <path d="M10.9 12.1 19 4M15.5 7.5l2.5 2.5M17.5 5.5 20 8" />
+    </>
+  ),
+  code: <path d="M8.5 7.5 4 12l4.5 4.5M15.5 7.5 20 12l-4.5 4.5M13.5 5l-3 14" />,
+  copy: (
+    <>
+      <rect x="8.5" y="8.5" width="11" height="11" rx="2.2" />
+      <path d="M15.5 8.5V6.7a2.2 2.2 0 0 0-2.2-2.2H6.7a2.2 2.2 0 0 0-2.2 2.2v6.6a2.2 2.2 0 0 0 2.2 2.2h1.8" />
+    </>
+  ),
+  refresh: (
+    <>
+      <path d="M19.5 12a7.5 7.5 0 0 1-13.1 5M4.5 12a7.5 7.5 0 0 1 13.1-5" />
+      <path d="M18 3.5V7h-3.5M6 20.5V17h3.5" />
+    </>
+  ),
+  play: <path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5Z" fill="currentColor" />,
+  pause: (
+    <>
+      <rect x="6.5" y="5" width="3.5" height="14" rx="1.2" fill="currentColor" />
+      <rect x="14" y="5" width="3.5" height="14" rx="1.2" fill="currentColor" />
+    </>
+  ),
+  skip: (
+    <>
+      <path d="M5.5 6.2v11.6a.8.8 0 0 0 1.2.7l8.6-5.8a.8.8 0 0 0 0-1.4L6.7 5.5a.8.8 0 0 0-1.2.7Z" fill="currentColor" />
+      <path d="M18.5 5.5v13" />
+    </>
+  ),
+  swap: <path d="M7 4v14M7 18l-3-3M7 18l3-3M17 20V6M17 6l-3 3M17 6l3 3" />,
+  flame: <path d="M12 21a6 6 0 0 0 6-6c0-3.5-2.5-5.5-3.5-8.5-1.5 1.5-2 3-2 4.5-1-1-1.5-2.3-1.5-4C8 9 6 11.5 6 15a6 6 0 0 0 6 6Z" />,
+  check: <path d="M5 12.5l4.5 4.5L19 7.5" />,
   grid: (
     <>
       <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />

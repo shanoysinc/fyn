@@ -3,8 +3,12 @@ import { lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo,
 import { ActionPanel, type PanelAction } from "./components/ActionPanel";
 import { CleanView } from "./components/CleanView";
 import { ClipboardView } from "./components/ClipboardView";
+import { DevToolsView } from "./components/DevToolsView";
 import { MiniAppsView } from "./components/MiniAppsView";
 import { ColorView } from "./components/ColorView";
+import { PasswordView } from "./components/PasswordView";
+import { PomodoroPill, PomodoroView } from "./components/PomodoroView";
+import { PortsView } from "./components/PortsView";
 import { EntryIconView, GEAR_PATH, Glyph } from "./components/EntryIconView";
 import { Kbd } from "./components/Kbd";
 import { SettingsView } from "./components/SettingsView";
@@ -653,6 +657,14 @@ export function App() {
           <CleanView onBack={leave} />
         ) : view === "clipboard" ? (
           <ClipboardView onBack={leave} />
+        ) : view === "pomodoro" ? (
+          <PomodoroView onBack={leave} />
+        ) : view === "ports" ? (
+          <PortsView onBack={leave} />
+        ) : view === "passwords" ? (
+          <PasswordView onBack={leave} />
+        ) : view === "devtools" ? (
+          <DevToolsView onBack={leave} />
         ) : view === "color" ? (
           <ColorView initial={viewArg} onBack={leave} />
         ) : (
@@ -776,6 +788,7 @@ export function App() {
                 >
                   <Glyph name="apps" size={17} />
                 </button>
+                <PomodoroPill onOpen={() => openView("pomodoro")} />
                 {update && (
                   <button className="pill" onClick={() => openView("settings")} title="Open Settings to install">
                     Update {update.version} available
