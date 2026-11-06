@@ -539,6 +539,8 @@ export function App() {
                     value={valueOf(s.key, entry.id)}
                     entry={entry}
                     onRun={() => void runEntry(entry)}
+                    // Everything in Favorites is a favorite; the star only adds noise there.
+                    showStar={s.key !== "fav"}
                     onContextMenu={(e) => {
                       // Right-click: select the row and open its actions at the pointer.
                       e.preventDefault();
@@ -642,9 +644,10 @@ interface RowProps {
   value: string;
   onRun: () => void;
   onContextMenu: (e: React.MouseEvent) => void;
+  showStar: boolean;
 }
 
-const Row = memo(function Row({ entry, value, onRun, onContextMenu }: RowProps) {
+const Row = memo(function Row({ entry, value, onRun, onContextMenu, showStar }: RowProps) {
   return (
     <Command.Item value={value} className="row" onSelect={onRun} onContextMenu={onContextMenu}>
       <EntryIconView icon={entry.icon} />
@@ -652,7 +655,7 @@ const Row = memo(function Row({ entry, value, onRun, onContextMenu }: RowProps) 
         {entry.prefix && <span className="row__prefix">{entry.prefix} </span>}
         <Highlight text={entry.title} matches={entry.matches ?? []} />
       </span>
-      {entry.app?.pinned && (
+      {showStar && entry.app?.pinned && (
         <span className="row__pin" title="Favorite" aria-label="Favorite">
           <StarIcon />
         </span>

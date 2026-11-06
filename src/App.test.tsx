@@ -34,6 +34,17 @@ describe("home screen", () => {
     expect(screen.getAllByText("Google Chrome")).toHaveLength(2); // favorite + applications
   });
 
+  it("shows the favorite star in other sections but not in Favorites itself", async () => {
+    await setup();
+    const groups = [...document.querySelectorAll<HTMLElement>("[cmdk-group]")];
+    const chromeRow = (heading: string) =>
+      within(groups.find((g) => g.querySelector("[cmdk-group-heading]")?.textContent === heading)!)
+        .getByText("Google Chrome")
+        .closest(".row")!;
+    expect(chromeRow("Favorites").querySelector(".row__pin")).toBeNull();
+    expect(chromeRow("Applications").querySelector(".row__pin")).not.toBeNull();
+  });
+
   it("selects the first favorite and opens it with Enter", async () => {
     const { user } = await setup();
     expect(selectedRow()).toHaveTextContent("Google Chrome");
