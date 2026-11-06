@@ -544,6 +544,9 @@ export function App() {
     [],
   );
 
+  /** Back from a tool screen: to the Mini Apps list if it was opened from there, else home. */
+  const leave = useMemo(() => (returnTo ? backTo(returnTo) : back), [back, backTo, returnTo]);
+
   const finishWelcome = useCallback(() => {
     api.setOnboarded(true).catch(showError);
     setSettings((s) => (s ? { ...s, onboarded: true } : s));
@@ -637,7 +640,7 @@ export function App() {
           />
         ) : view === "emoji" ? (
           <Suspense fallback={null}>
-            <EmojiView onBack={back} />
+            <EmojiView onBack={leave} />
           </Suspense>
         ) : view === "miniapps" ? (
           <MiniAppsView
@@ -647,11 +650,11 @@ export function App() {
             onTogglePin={(pinId, title) => ctx.togglePin(pinId, title)}
           />
         ) : view === "clean" ? (
-          <CleanView onBack={returnTo ? backTo(returnTo) : back} />
+          <CleanView onBack={leave} />
         ) : view === "clipboard" ? (
-          <ClipboardView onBack={back} />
+          <ClipboardView onBack={leave} />
         ) : view === "color" ? (
-          <ColorView initial={viewArg} onBack={back} />
+          <ColorView initial={viewArg} onBack={leave} />
         ) : (
           renderRoot()
         )}

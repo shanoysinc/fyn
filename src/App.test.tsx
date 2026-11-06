@@ -506,6 +506,33 @@ describe("screens", () => {
     await screen.findByRole("heading", { name: "Settings" });
   });
 
+  it.each([
+    ["Clipboard History", 0, "Search clipboard history…"],
+    ["Clean Windows", 1, "Never touch anything named"],
+    ["Color Picker", 2, /Type a color/],
+    ["Emoji Picker", 3, "Search emoji…"],
+  ] as const)("%s opened from Mini Apps goes back to Mini Apps", async (_name, index, marker) => {
+    const { user } = await setup();
+    await user.click(screen.getByRole("button", { name: "Mini Apps" }));
+    await screen.findByText("More mini apps are on the way.");
+    await user.keyboard("{ArrowDown}".repeat(index) + "{Enter}");
+    if (typeof marker === "string" && !marker.endsWith("…")) await screen.findByText(marker);
+    else await screen.findByPlaceholderText(marker);
+    await user.keyboard("{Escape}");
+    expect(await screen.findByText("More mini apps are on the way.")).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText(/Search apps/)).not.toBeInTheDocument();
+  });
+
+  it("a mini app opened from search still goes back home", async () => {
+    const { user, input } = await setup();
+    await user.type(input, "emoji picker");
+    await screen.findByText("Commands");
+    await user.keyboard("{Enter}");
+    await screen.findByPlaceholderText("Search emoji…");
+    await user.keyboard("{Escape}");
+    await screen.findByPlaceholderText(/Search apps/);
+  });
+
   it("the Mini Apps button in the footer opens Mini Apps, and Clean Windows from there goes back to it", async () => {
     const { user } = await setup();
     await user.click(screen.getByRole("button", { name: "Mini Apps" }));
