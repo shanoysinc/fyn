@@ -21,9 +21,9 @@
 - **Finds every app**: Start Menu shortcuts (`.lnk`, plus non-web `.url` such as Steam games) and Store/MSIX apps.
 - **Fuzzy search in Rust** ([nucleo](https://github.com/helix-editor/nucleo)): `vsc` finds Visual Studio Code, with the matched letters highlighted.
 - **Smart ranking**: match quality, prefix bonus and *frecency* (how often and how recently you open something).
-- **Favorites**: pin apps, reorder them, and open them with <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd>.
+- **Favorites**: pin apps, commands, Settings pages and websites, reorder them, and open them with <kbd>Ctrl</kbd>+<kbd>1</kbd>…<kbd>9</kbd>.
 - **Suggestions**: your most-used apps on the home screen.
-- Favorites and suggestions show as a **row of icons** (← → to move) or as a list; choose in Settings.
+- Favorites and suggestions show as an **icon grid** (up to 3 rows, arrow keys to move) or a short list. **View all** in the section header (or the "View All Favorites" command) opens the full set. Choose the layout in Settings.
 - Run as administrator, show in File Explorer, copy path.
 
 ### Built-in tools
@@ -179,7 +179,7 @@ src/
 
 ### ✅ Shipped in 0.1
 
-- App search with fuzzy matching, frecency ranking, favorites (icon row or list) and suggestions
+- App search with fuzzy matching, frecency ranking, suggestions, and favorites (apps, commands, Settings pages, websites; icon row or list)
 - Calculator, web search with site prefixes, open URLs and paths
 - System commands (lock, sleep, restart, shut down, sign out, empty Recycle Bin, Windows dark mode) and 35+ Windows Settings pages
 - Emoji picker; color picker with HEX/RGB/HSL conversion and a screen eyedropper
@@ -191,7 +191,6 @@ src/
 - **Code-signed installer**, so Windows stops showing the "isn't commonly downloaded" / SmartScreen warning
 - **Unit and currency conversion** in the calculator (`5 km in mi`, `20 usd in eur`)
 - **Clipboard history**: search and paste anything you copied recently
-- **Pin built-in commands, Settings pages and websites** to Favorites, not just apps
 - **Quicklinks**: saved searches and links with a placeholder (`jira {query}`)
 
 ### 💡 Later

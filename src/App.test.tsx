@@ -18,7 +18,7 @@ async function setup() {
   installClipboard(); // after setup(): user-event replaces navigator.clipboard with its own stub
   render(<App />);
   const input = await screen.findByPlaceholderText(/Search apps/);
-  await screen.findByText("Favorites");
+  await screen.findAllByText("Favorites"); // heading (and "View all" rows say it too)
   return { user, input };
 }
 
@@ -63,6 +63,137 @@ describe("home screen", () => {
     const { user } = await setup();
     await user.keyboard("{Enter}");
     await waitFor(() => expect(toast()).toBe("That app is no longer installed"));
+  });
+});
+
+describe("pinning commands, Settings pages and websites", () => {
+  it("Ctrl+Shift+P pins a command from search results", async () => {
+    const { user, input } = await setup();
+    await user.type(input, "lock");
+    await screen.findByText("Commands");
+    await user.keyboard("{Control>}{Shift>}P{/Shift}{/Control}");
+    expect(api.togglePin).toHaveBeenCalledWith("cmd:sys:lock");
+    await waitFor(() => expect(toast()).toBe("Added Lock Screen to Favorites"));
+  });
+
+  it("right-click on a website offers Add to Favorites", async () => {
+    const { user, input } = await setup();
+    await user.type(input, "github.com");
+    await screen.findByText("Open github.com");
+    fireEvent.contextMenu(screen.getByText("Open github.com").closest(".row")!, { clientX: 20, clientY: 20 });
+    await user.click(await screen.findByText("Add to Favorites"));
+    expect(api.togglePin).toHaveBeenCalledWith("web:https://github.com");
+  });
+
+  it("shows pinned commands and websites in Favorites, in pin order, with apps", async () => {
+    api.getHome.mockResolvedValue(
+      makeHome({
+        favorites: [{ ...CHROME, pinned: true }],
+        pins: ["cmd:sys:lock", "lnk:chrome", "web:https://github.com", "cmd:sys:removed-command", "lnk:uninstalled"],
+      }),
+    );
+    const { user } = await setup();
+    const favGroup = [...document.querySelectorAll<HTMLElement>("[cmdk-group]")].find(
+      (g) => g.querySelector("[cmdk-group-heading]")?.textContent === "Favorites",
+    )!;
+    const names = [...favGroup.querySelectorAll(".row__name")].map((n) => n.textContent);
+    expect(names).toEqual(["Lock Screen", "Google Chrome", "github.com"]); // unknown pins skipped
+
+    await user.keyboard("{Control>}3{/Control}");
+    expect(api.openUrl).toHaveBeenCalledWith("https://github.com");
+    await user.keyboard("{Control>}1{/Control}");
+    expect(api.runSystemCommand).toHaveBeenCalledWith("lock");
+  });
+
+  it("a pinned command can be reordered and removed from Favorites", async () => {
+    api.getHome.mockResolvedValue(makeHome({ favorites: [{ ...CHROME, pinned: true }], pins: ["lnk:chrome", "cmd:sys:lock"] }));
+    const { user } = await setup();
+    await user.keyboard("{ArrowDown}"); // Lock Screen (second favorite)
+    expect(selectedRow()).toHaveTextContent("Lock Screen");
+    await user.keyboard("{Control>}{Shift>}{ArrowUp}{/Shift}{/Control}");
+    expect(api.movePin).toHaveBeenCalledWith("cmd:sys:lock", -1);
+    api.togglePin.mockResolvedValueOnce(false);
+    await user.keyboard("{Control>}{Shift>}P{/Shift}{/Control}");
+    await waitFor(() => expect(toast()).toBe("Removed Lock Screen from Favorites"));
+  });
+
+  it("pinned commands show the star in search results", async () => {
+    api.getHome.mockResolvedValue(makeHome({ pins: ["lnk:chrome", "cmd:sys:lock"] }));
+    const { user, input } = await setup();
+    await user.type(input, "lock");
+    await screen.findByText("Commands");
+    const row = [...document.querySelectorAll(".row")].find((r) => r.querySelector(".row__name")?.textContent === "Lock Screen")!;
+    expect(row.querySelector(".row__pin")).not.toBeNull();
+  });
+});
+
+describe("3 rows on the home screen, then View all", () => {
+  // 30 pinned apps: more than 3 rows of 8 icons.
+  const many = Array.from({ length: 30 }, (_, i) => ({ ...CODE, id: `lnk:app${i}`, name: `App ${i}`, pinned: true }));
+
+  async function setupMany(homeLayout: "grid" | "list") {
+    api.getSettings.mockResolvedValue(makeSettings({ homeLayout }));
+    api.getHome.mockResolvedValue(makeHome({ favorites: many, suggestions: [CODE], applications: many }));
+    const ctx = await setup();
+    await screen.findByRole("button", { name: /View all 30/, hidden: true }) // cmdk marks headings aria-hidden;
+    return ctx;
+  }
+
+  const groupTitled = (title: string) =>
+    [...document.querySelectorAll<HTMLElement>("[cmdk-group]")].find((g) => {
+      const h = g.querySelector("[cmdk-group-heading]");
+      return (h?.querySelector(".group__title") ?? h)?.textContent === title;
+    })!;
+
+  it("icons: shows 3 full rows (24 favorites) with View all in the heading", async () => {
+    const { user } = await setupMany("grid");
+    const fav = groupTitled("Favorites");
+    expect(fav.querySelectorAll(".tile")).toHaveLength(24);
+    expect(fav.querySelector("[cmdk-group-heading] .view-all")).toHaveTextContent("View all 30");
+    await user.keyboard("{ArrowDown}"); // row 2, same column
+    expect(document.querySelector('.tile[data-selected="true"]')).toHaveTextContent("App 8");
+  });
+
+  it("list: shows 3 favorites with View all in the heading", async () => {
+    await setupMany("list");
+    const fav = groupTitled("Favorites");
+    expect(fav.querySelectorAll(".row")).toHaveLength(3);
+    expect(fav.querySelector(".view-all")).toHaveTextContent("View all 30");
+  });
+
+  it("View all opens a screen with every favorite, filterable, and Esc comes back", async () => {
+    const { user } = await setupMany("list");
+    await user.click(screen.getByRole("button", { name: /View all 30/, hidden: true }));
+    const filter = await screen.findByPlaceholderText("Filter favorites…");
+    expect(document.querySelectorAll(".row")).toHaveLength(30);
+    expect(screen.queryByText("Applications")).not.toBeInTheDocument();
+    expect(document.querySelector(".view-all")).toBeNull(); // nothing more to see here
+
+    await user.type(filter, "App 2");
+    await waitFor(() => expect(document.querySelectorAll(".row").length).toBeLessThan(30));
+    expect(api.search).not.toHaveBeenCalledWith("App 2"); // filters locally
+    await user.keyboard("{Enter}");
+    expect(api.launch).toHaveBeenCalledWith("lnk:app2");
+
+    await user.keyboard("{Escape}"); // clears the filter
+    expect(filter).toHaveValue("");
+    await user.keyboard("{Escape}"); // back home
+    await screen.findByPlaceholderText(/Search apps/);
+    expect(api.hide).not.toHaveBeenCalled();
+  });
+
+  it("keyboard route: the View All Favorites command", async () => {
+    const { user, input } = await setupMany("list");
+    await user.type(input, "view all fav");
+    await screen.findByText("Commands");
+    await user.keyboard("{Enter}");
+    await screen.findByPlaceholderText("Filter favorites…");
+  });
+
+  it("no View all when everything fits", async () => {
+    api.getSettings.mockResolvedValue(makeSettings({ homeLayout: "list" }));
+    await setup();
+    expect(document.querySelector(".view-all")).toBeNull();
   });
 });
 

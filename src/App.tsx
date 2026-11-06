@@ -5,13 +5,17 @@ import { ColorView } from "./components/ColorView";
 import { EntryIconView, GEAR_PATH } from "./components/EntryIconView";
 import { Kbd } from "./components/Kbd";
 import { SettingsView } from "./components/SettingsView";
+import { BackButton } from "./components/ViewHeader";
 import { WelcomeView } from "./components/WelcomeView";
 import { actionFromKey, actionsFor, type ActionId } from "./lib/actions";
+import { fuzzyMatch } from "./lib/fuzzy";
 import { gridMove, type ArrowKey } from "./lib/gridNav";
 import {
   appEntry,
+  favoriteEntry,
   looksLikePath,
   matchCommands,
+  withPinActions,
   quickEntries,
   webFallbacks,
   type Ctx,
@@ -36,12 +40,21 @@ const EmojiView = lazy(() => import("./components/EmojiView"));
 
 const DEV = import.meta.env.DEV;
 
+/** Icons per row in the Favorites / Suggestions grid (the window is a fixed 750px wide). */
+const TILE_COLUMNS = 8;
+/** Rows of Favorites / Suggestions on the home screen before "View all" takes over. */
+const HOME_ROWS = 3;
+
+const COLLECTION_TITLE: Record<string, string> = { fav: "Favorites", sug: "Suggestions" };
+
 interface Section {
   key: string;
   title: string;
   entries: Entry[];
-  /** Shown as a horizontal row of icons instead of a list. */
+  /** Shown as a grid of icons instead of a list. */
   tiles?: boolean;
+  /** More items than fit on the home screen: show "View all" in the heading. */
+  viewAll?: { key: "fav" | "sug"; total: number };
 }
 
 interface Results {
@@ -105,6 +118,7 @@ export function App() {
     setPanel(null);
     setViewArg(arg);
     setNav(next === "welcome" ? "intro" : "forward");
+    if (next === "collection") setQuery(""); // the box filters the collection from scratch
     setView(next);
   }, []);
 
@@ -170,7 +184,8 @@ export function App() {
     [showError],
   );
 
-  useEffect(() => runSearch(query, true), [query, runSearch]);
+  // The "View all" screen filters locally; everywhere else the box searches everything.
+  useEffect(() => runSearch(view === "collection" ? "" : query, true), [query, runSearch, view]);
 
   const refresh = useCallback(() => {
     loadHome();
@@ -228,7 +243,44 @@ export function App() {
     );
   }, [home, settings, playEnter]);
 
+  // Favorites in pin order: installed apps plus pinned commands, Settings pages and
+  // websites. Pins for apps that were uninstalled (or unknown commands) are skipped.
+  const favorites: Entry[] = useMemo(() => {
+    if (!home) return [];
+    const apps = new Map(home.favorites.map((a) => [a.id, a]));
+    return home.pins.flatMap((id) => {
+      const app = apps.get(id);
+      const entry = app ? appEntry(app) : favoriteEntry(id);
+      return entry ? [entry] : [];
+    });
+  }, [home]);
+  const pinnedIds = useMemo(() => new Set(home?.pins ?? []), [home]);
+
   const sections: Section[] = useMemo(() => {
+    // Built-in entries get "Add to / Remove from Favorites" (apps have theirs already).
+    const withPins = (s: Section): Section => ({
+      ...s,
+      entries: s.entries.map((e) => withPinActions(e, !!e.pinId && pinnedIds.has(e.pinId))),
+    });
+    return buildSections().map(withPins);
+  }, [home, results, favorites, pinnedIds, view, viewArg, query, settings?.searchEngine, settings?.homeLayout]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  function buildSections(): Section[] {
+    const tiles = (settings?.homeLayout ?? "grid") === "grid";
+
+    // "View all" screen: every favorite or suggestion, filtered by the search box.
+    if (view === "collection") {
+      const all = viewArg === "sug" ? (home?.suggestions ?? []).map(appEntry) : favorites;
+      const q = query.trim();
+      const entries = q
+        ? all.flatMap((e) => {
+            const m = fuzzyMatch(q, e.title);
+            return m ? [{ ...e, matches: m.matches }] : [];
+          })
+        : all;
+      return entries.length ? [{ key: `all-${viewArg}`, title: COLLECTION_TITLE[viewArg ?? "fav"], entries, tiles }] : [];
+    }
+
     if (results) {
       const q = results.query;
       const quick = quickEntries(q, results.path);
@@ -246,20 +298,32 @@ export function App() {
       ].filter((s) => s.entries.length > 0);
     }
     if (!home) return [];
-    const tiles = (settings?.homeLayout ?? "grid") === "grid";
+    // Home: at most 3 rows of icons (or 3 list items); the rest is behind "View all".
+    const limit = tiles ? TILE_COLUMNS * HOME_ROWS : HOME_ROWS;
+    const capped = (key: "fav" | "sug", title: string, all: Entry[]): Section => ({
+      key,
+      title,
+      tiles,
+      entries: all.slice(0, limit),
+      viewAll: all.length > limit ? { key, total: all.length } : undefined,
+    });
     return [
-      { key: "fav", title: "Favorites", entries: home.favorites.map(appEntry), tiles },
-      { key: "sug", title: "Suggestions", entries: home.suggestions.map(appEntry), tiles },
+      capped("fav", "Favorites", favorites),
+      capped("sug", "Suggestions", home.suggestions.map(appEntry)),
       { key: "app", title: "Applications", entries: home.applications.map(appEntry) },
     ].filter((s) => s.entries.length > 0);
-  }, [home, results, settings?.searchEngine, settings?.homeLayout]);
+  }
 
-  // Visual rows for arrow keys: an icon row is one row; every list item is its own row.
+  // Visual rows for arrow keys: icons wrap into rows of TILE_COLUMNS; every list item is
+  // its own row.
   const gridRows = useMemo(() => {
     if (!sections.some((s) => s.tiles)) return null;
     return sections.flatMap((s) => {
       const values = s.entries.map((e) => valueOf(s.key, e.id));
-      return s.tiles ? [values] : values.map((v) => [v]);
+      if (!s.tiles) return values.map((v) => [v]);
+      const rows: string[][] = [];
+      for (let i = 0; i < values.length; i += TILE_COLUMNS) rows.push(values.slice(i, i + TILE_COLUMNS));
+      return rows;
     });
   }, [sections]);
   const gridColumn = useRef(0);
@@ -304,7 +368,22 @@ export function App() {
       .catch(showError);
   }, [showError, showToast]);
 
-  const ctx: Ctx = useMemo(() => ({ openView, checkForUpdates }), [openView, checkForUpdates]);
+  const ctx: Ctx = useMemo(
+    () => ({
+      openView,
+      checkForUpdates,
+      togglePin: async (pinId, title) => {
+        const pinned = await api.togglePin(pinId);
+        refresh();
+        return pinned ? `Added ${title} to Favorites` : `Removed ${title} from Favorites`;
+      },
+      movePin: async (pinId, delta) => {
+        await api.movePin(pinId, delta);
+        refresh();
+      },
+    }),
+    [openView, checkForUpdates, refresh],
+  );
 
   const runAppAction = useCallback(
     async (action: ActionId, item: Item) => {
@@ -422,6 +501,7 @@ export function App() {
   const back = useCallback(() => {
     setNav("back");
     setView("root");
+    setQuery(""); // e.g. the "View all" filter text means nothing on the home screen
     loadSettings();
     focusInput();
   }, [focusInput, loadSettings]);
@@ -468,10 +548,10 @@ export function App() {
     }
     // Ctrl+1…9 opens the matching favorite.
     if (ctrl && !e.shiftKey && /^[1-9]$/.test(e.key) && !results && home) {
-      const fav = home.favorites[Number(e.key) - 1];
+      const fav = favorites[Number(e.key) - 1];
       if (fav) {
         e.preventDefault();
-        void runEntry(appEntry(fav));
+        void runEntry(fav);
       }
       return;
     }
@@ -490,6 +570,7 @@ export function App() {
     if (e.key === "Escape") {
       e.preventDefault();
       if (query) setQuery("");
+      else if (view === "collection") back();
       else void api.hide();
     }
   };
@@ -543,13 +624,17 @@ export function App() {
           onKeyDown={onKeyDown}
         >
           <div className="search">
-            <SearchIcon />
+            {view === "collection" ? <BackButton onBack={back} /> : <SearchIcon />}
             <Command.Input
               ref={inputRef}
               className="search__input"
               value={query}
               onValueChange={setQuery}
-              placeholder="Search apps, commands, or do math…"
+              placeholder={
+                view === "collection"
+                  ? `Filter ${COLLECTION_TITLE[viewArg ?? "fav"].toLowerCase()}…`
+                  : "Search apps, commands, or do math…"
+              }
               autoFocus
               spellCheck={false}
               maxLength={256}
@@ -561,7 +646,24 @@ export function App() {
             {sections.map((s, i) => (
               <Command.Group
                 key={s.key}
-                heading={s.title}
+                heading={
+                  s.viewAll ? (
+                    <>
+                      <span className="group__title">{s.title}</span>
+                      <button
+                        className="view-all"
+                        onMouseDown={(e) => e.preventDefault()} // keep focus in the search box
+                        onClick={() => openView("collection", s.viewAll!.key)}
+                        title={`See all ${s.viewAll.total}`}
+                      >
+                        View all {s.viewAll.total}
+                        <ChevronRight />
+                      </button>
+                    </>
+                  ) : (
+                    s.title
+                  )
+                }
                 className={`group ${s.tiles ? "group--tiles" : ""}`}
                 style={{ "--g": i } as React.CSSProperties}
               >
@@ -699,7 +801,7 @@ const Row = memo(function Row({ entry, value, onRun, onContextMenu, showStar }: 
         {entry.prefix && <span className="row__prefix">{entry.prefix} </span>}
         <Highlight text={entry.title} matches={entry.matches ?? []} />
       </span>
-      {showStar && entry.app?.pinned && (
+      {showStar && (entry.app?.pinned || entry.pinned) && (
         <span className="row__pin" title="Favorite" aria-label="Favorite">
           <StarIcon />
         </span>
@@ -788,6 +890,14 @@ function GearIcon() {
     >
       <path d={GEAR_PATH} />
       <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function ChevronRight() {
+  return (
+    <svg viewBox="0 0 16 16" width="12" height="12" aria-hidden>
+      <path d="M6 3.5 10.5 8 6 12.5" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }

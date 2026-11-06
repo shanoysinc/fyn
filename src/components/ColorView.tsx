@@ -60,9 +60,7 @@ export function ColorView({ initial, onBack }: { initial?: string; onBack: () =>
         setInput(value);
         setColor(parsed);
         remember(value);
-        // cmdk re-selects the first item ("Pick from Screen") when the input text changes,
-        // so select HEX after that settles; otherwise ↵ would start the picker again.
-        requestAnimationFrame(() => setSelected("hex"));
+        setSelected("hex"); // ready to copy with ↵
         setToast({ text: `Picked ${value}. Press ↵ to copy` });
       }
     } catch (e) {
@@ -101,11 +99,14 @@ export function ColorView({ initial, onBack }: { initial?: string; onBack: () =>
         }}
       >
         <ViewHeader onBack={onBack}>
-          <Command.Input
+          {/* A plain input, not cmdk's Command.Input: the box takes a colour code and never
+              filters the list, and cmdk would re-select "Pick from Screen" whenever its
+              text changed (so ↵ after a pick would start the picker again). */}
+          <input
             ref={inputRef}
             className="search__input"
             value={input}
-            onValueChange={setInput}
+            onChange={(e) => setInput(e.target.value)}
             placeholder="Type a color (#7c3aed, rgb(…), hsl(…)) or pick one from the screen"
             autoFocus
             spellCheck={false}

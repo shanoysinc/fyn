@@ -15,16 +15,23 @@ import {
   COMMANDS,
   PREFIXES,
   appEntry,
+  favoriteEntry,
   asUrl,
   looksLikePath,
   matchCommands,
   quickEntries,
   webFallbacks,
+  withPinActions,
   type Ctx,
 } from "./entries";
 import { CODE } from "../test/fixtures";
 
-const ctx: Ctx = { openView: vi.fn(), checkForUpdates: vi.fn() };
+const ctx: Ctx = {
+  openView: vi.fn(),
+  checkForUpdates: vi.fn(),
+  togglePin: vi.fn(async () => "toggled"),
+  movePin: vi.fn(async () => {}),
+};
 
 beforeEach(() => vi.clearAllMocks());
 
@@ -211,5 +218,61 @@ describe("appEntry", () => {
   it("labels Store apps and shortcuts", () => {
     expect(appEntry({ ...CODE, kind: "store" }).subtitle).toBe("Store App");
     expect(appEntry({ ...CODE, kind: "link" }).subtitle).toBe("Shortcut");
+  });
+});
+
+describe("pinning built-in commands, Settings pages and websites", () => {
+  it("commands and Settings pages carry a cmd: pin id", () => {
+    expect(matchCommands("lock").entries[0].pinId).toBe("cmd:sys:lock");
+    expect(matchCommands("bluetooth").entries[0].pinId).toBe("cmd:ms:bluetooth");
+    expect(matchCommands("emoji").entries[0].pinId).toBe("cmd:fyn:emoji");
+  });
+
+  it("websites carry a web: pin id; other quick results can't be pinned", () => {
+    expect(quickEntries("github.com", null)[0].pinId).toBe("web:https://github.com");
+    expect(quickEntries("2+2", null)[0].pinId).toBeUndefined();
+    expect(webFallbacks("x", "google")[0].pinId).toBeUndefined();
+  });
+
+  it("adds Add to Favorites, and reordering once pinned", async () => {
+    const lock = matchCommands("lock").entries[0];
+    const unpinned = withPinActions(lock, false);
+    expect(unpinned.actions?.map((a) => a.title)).toEqual(["Add to Favorites"]);
+    expect(unpinned.pinned).toBe(false);
+
+    const pinned = withPinActions(lock, true);
+    expect(pinned.actions?.map((a) => a.id)).toEqual(["pin", "pin-up", "pin-down"]);
+    expect(pinned.actions?.[0].title).toBe("Remove from Favorites");
+
+    await pinned.actions![0].run(ctx);
+    expect(ctx.togglePin).toHaveBeenCalledWith("cmd:sys:lock", "Lock Screen");
+    await pinned.actions![2].run(ctx);
+    expect(ctx.movePin).toHaveBeenCalledWith("cmd:sys:lock", 1);
+  });
+
+  it("keeps a website's own actions and leaves apps and unpinnable entries alone", () => {
+    const site = withPinActions(quickEntries("github.com", null)[0], false);
+    expect(site.actions?.map((a) => a.id)).toEqual(["copy", "pin"]);
+    const app = appEntry(CODE);
+    expect(withPinActions(app, true)).toBe(app);
+    const calc = quickEntries("2+2", null)[0];
+    expect(withPinActions(calc, false)).toBe(calc);
+  });
+
+  it("rebuilds favorites from pin ids", async () => {
+    const lock = favoriteEntry("cmd:sys:lock")!;
+    expect(lock).toMatchObject({ id: "cmd:sys:lock", title: "Lock Screen", subtitle: "System" });
+    expect(favoriteEntry("cmd:ms:display")?.title).toBe("Display Settings");
+
+    const site = favoriteEntry("web:https://www.github.com/tauri-apps/")!;
+    expect(site).toMatchObject({ title: "github.com/tauri-apps", subtitle: "Website" });
+    await site.primary.run(ctx);
+    expect(api.openUrl).toHaveBeenCalledWith("https://www.github.com/tauri-apps/");
+  });
+
+  it("ignores pins it doesn't recognise", () => {
+    expect(favoriteEntry("cmd:sys:teleport")).toBeNull();
+    expect(favoriteEntry("web:javascript:alert(1)")).toBeNull();
+    expect(favoriteEntry("lnk:code")).toBeNull(); // apps are resolved by the caller
   });
 });

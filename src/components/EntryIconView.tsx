@@ -91,6 +91,14 @@ const PATHS: Record<GlyphName, ReactNode> = {
     </>
   ),
   sliders: <path d="M5 7h9M18 7h1M5 17h1M10 17h9M16 5v4M8 15v4" />,
+  grid: (
+    <>
+      <rect x="4" y="4" width="6.5" height="6.5" rx="1.5" />
+      <rect x="13.5" y="4" width="6.5" height="6.5" rx="1.5" />
+      <rect x="4" y="13.5" width="6.5" height="6.5" rx="1.5" />
+      <rect x="13.5" y="13.5" width="6.5" height="6.5" rx="1.5" />
+    </>
+  ),
 };
 
 export function Glyph({ name, size = 16 }: { name: GlyphName; size?: number }) {

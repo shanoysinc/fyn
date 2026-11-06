@@ -195,14 +195,21 @@ pub fn open_settings_page(uri: &str) -> Result<(), String> {
 
 /// Open an http(s) URL in the default browser.
 pub fn open_url(url: &str) -> Result<(), String> {
+    validate_url(url)?;
+    shell_open(url)
+}
+
+/// An http(s) URL with no spaces, quotes or control characters, within the length limit.
+pub fn validate_url(url: &str) -> Result<(), String> {
     let lower = url.to_ascii_lowercase();
     let valid = url.len() <= MAX_URL_LEN
         && (lower.starts_with("https://") || lower.starts_with("http://"))
         && !url.chars().any(|c| c.is_control() || c.is_whitespace() || c == '"');
-    if !valid {
-        return Err("Invalid URL".into());
+    if valid {
+        Ok(())
+    } else {
+        Err("Invalid URL".into())
     }
-    shell_open(url)
 }
 
 #[derive(Serialize)]

@@ -1130,22 +1130,16 @@ img.app-icon--loaded {
 
 /* ---------- icon rows (Favorites / Suggestions, "Icons" layout) ---------- */
 
+/* Icons wrap into a grid of 8 columns (TILE_COLUMNS in App.tsx); the home screen shows
+   at most 3 rows and puts the rest behind "View all". */
 .group--tiles [cmdk-group-items] {
-  display: flex;
+  display: grid;
+  grid-template-columns: repeat(8, minmax(0, 1fr));
   gap: 4px;
   padding: 2px 2px 4px;
-  overflow-x: auto;
-  scroll-padding: 0 8px;
-  overscroll-behavior-x: contain;
-  scrollbar-width: none; /* a long Favorites row scrolls sideways, without a bar */
-}
-
-.group--tiles [cmdk-group-items]::-webkit-scrollbar {
-  display: none;
 }
 
 .tile {
-  flex: 0 0 86px;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -1201,4 +1195,47 @@ img.app-icon--loaded {
 .tile[data-selected="true"] .tile__name {
   color: var(--text);
   font-weight: 500;
+}
+
+/* Pinned commands / websites in an icon row: scale the symbol to match 40px app icons. */
+.tile .glyph-tile {
+  border-radius: 10px;
+}
+
+.tile .glyph-tile svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* "View all" in the Favorites / Suggestions heading: title · line · button (right). */
+.group [cmdk-group-heading]::after {
+  order: 1;
+}
+
+.view-all {
+  order: 2;
+  margin-left: auto; /* stays right even where the divider line is hidden */
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  height: 22px;
+  padding: 0 4px 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-2);
+  transition: background-color 90ms ease-out, color 90ms ease-out;
+}
+
+.view-all:hover {
+  background: var(--hover);
+  color: var(--accent);
+}
+
+.view-all svg {
+  transition: transform 120ms var(--ease-out);
+}
+
+.view-all:hover svg {
+  transform: translateX(2px);
 }

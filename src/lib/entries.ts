@@ -6,12 +6,13 @@ import { parseColor, toHex, toHslString, toRgbString } from "./color";
 import { fuzzyMatch } from "./fuzzy";
 import { api, copyText, type Item, type PathInfo, type SearchEngine, type SystemCommandId } from "./ipc";
 
-export type View = "root" | "settings" | "welcome" | "emoji" | "color";
+/** "collection" = all favorites or all suggestions (arg "fav" / "sug"). */
+export type View = "root" | "settings" | "welcome" | "emoji" | "color" | "collection";
 
 export type GlyphName =
   | "lock" | "moon" | "restart" | "power" | "logout" | "trash" | "contrast"
   | "emoji" | "droplet" | "gear" | "sparkle" | "download" | "globe" | "search"
-  | "folder" | "file" | "calculator" | "sliders";
+  | "folder" | "file" | "calculator" | "sliders" | "grid";
 
 export type EntryIcon =
   | { kind: "app"; item: Item }
@@ -22,6 +23,9 @@ export type EntryIcon =
 export interface Ctx {
   openView: (view: View, arg?: string) => void;
   checkForUpdates: () => void;
+  /** Add/remove a pin; resolves to the toast message. */
+  togglePin: (pinId: string, title: string) => Promise<string>;
+  movePin: (pinId: string, delta: -1 | 1) => Promise<void>;
 }
 
 export interface EntryAction {
@@ -47,7 +51,15 @@ export interface Entry {
   actions?: EntryAction[];
   /** Ask for a second ↵ before running `primary` ("restart your PC"). */
   confirm?: string;
+  /** Id used to pin it to Favorites ("cmd:…" / "web:…"); apps use their own id. */
+  pinId?: string;
+  /** In Favorites (non-app entries; apps carry this on `app.pinned`). */
+  pinned?: boolean;
 }
+
+/** Pin id prefixes; must match PIN_COMMAND / PIN_WEBSITE in src-tauri/src/commands.rs. */
+export const PIN_COMMAND = "cmd:";
+export const PIN_WEBSITE = "web:";
 
 const TINT = {
   system: "#e5484d",
@@ -145,6 +157,13 @@ export const COMMANDS: CommandDef[] = [
   fyn("welcome", "Welcome to Fyn", "sparkle", ["help", "tutorial", "tips", "onboarding", "getting started"], (c) =>
     c.openView("welcome"),
   ),
+  // Keyboard route to the "View all" screens (the heading button is mouse-only).
+  fyn("all-favorites", "View All Favorites", "grid", ["favorites", "pinned", "starred"], (c) =>
+    c.openView("collection", "fav"),
+  ),
+  fyn("all-suggestions", "View All Suggestions", "grid", ["suggestions", "most used", "frequent"], (c) =>
+    c.openView("collection", "sug"),
+  ),
 
   settingsPage("network-wifi", "Wi-Fi", ["wifi", "wireless", "internet"]),
   settingsPage("bluetooth", "Bluetooth", ["devices", "headphones", "pair"]),
@@ -190,7 +209,67 @@ function commandEntry(def: CommandDef, matches: number[] = []): Entry {
     matches,
     primary: { id: "open", title: def.primaryTitle, run: def.run },
     confirm: def.confirm,
+    pinId: PIN_COMMAND + def.id,
   };
+}
+
+/** A website as a result or a favorite: open it, copy the URL, pin it. */
+function websiteEntry(url: string, id: string, title: string): Entry {
+  return {
+    id,
+    title,
+    subtitle: "Website",
+    icon: { kind: "glyph", glyph: "globe", tint: TINT.web },
+    primary: { id: "open", title: "Open in Browser", run: () => api.openUrl(url) },
+    actions: [{ id: "copy", title: "Copy URL", keys: ["Ctrl", "Shift", "C"], run: () => copyUrl(url) }],
+    pinId: PIN_WEBSITE + url,
+  };
+}
+
+/** "https://www.github.com/foo/" -> "github.com/foo" */
+function shortUrl(url: string): string {
+  return url.replace(/^https?:\/\//i, "").replace(/^www\./i, "").replace(/\/$/, "");
+}
+
+/**
+ * The entry for a pinned command, Settings page or website, or null for pins this
+ * version doesn't know (e.g. a command that was removed). Apps are handled by the caller.
+ */
+export function favoriteEntry(pinId: string): Entry | null {
+  if (pinId.startsWith(PIN_COMMAND)) {
+    const def = COMMANDS.find((c) => PIN_COMMAND + c.id === pinId);
+    return def ? { ...commandEntry(def), id: pinId } : null;
+  }
+  if (pinId.startsWith(PIN_WEBSITE)) {
+    const url = pinId.slice(PIN_WEBSITE.length);
+    return /^https?:\/\//i.test(url) ? websiteEntry(url, pinId, shortUrl(url)) : null;
+  }
+  return null;
+}
+
+/**
+ * Add the favorite actions (Ctrl+Shift+P to pin, reorder when pinned) to a pinnable
+ * built-in entry. Apps get theirs from actions.ts instead.
+ */
+export function withPinActions(entry: Entry, pinned: boolean): Entry {
+  const pinId = entry.pinId;
+  if (!pinId || entry.app) return entry;
+  const actions: EntryAction[] = [
+    ...(entry.actions ?? []),
+    {
+      id: "pin",
+      title: pinned ? "Remove from Favorites" : "Add to Favorites",
+      keys: ["Ctrl", "Shift", "P"],
+      run: (c) => c.togglePin(pinId, entry.title),
+    },
+  ];
+  if (pinned) {
+    actions.push(
+      { id: "pin-up", title: "Move Up in Favorites", keys: ["Ctrl", "Shift", "↑"], run: (c) => c.movePin(pinId, -1) },
+      { id: "pin-down", title: "Move Down in Favorites", keys: ["Ctrl", "Shift", "↓"], run: (c) => c.movePin(pinId, 1) },
+    );
+  }
+  return { ...entry, actions, pinned };
 }
 
 /** Matching commands, best first, plus the best score (for ordering against apps). */
@@ -323,16 +402,7 @@ export function quickEntries(query: string, path: PathInfo | null): Entry[] {
   }
 
   const url = asUrl(q);
-  if (url) {
-    out.push({
-      id: "url",
-      title: `Open ${url.replace(/^https?:\/\//i, "")}`,
-      subtitle: "Website",
-      icon: { kind: "glyph", glyph: "globe", tint: TINT.web },
-      primary: { id: "open", title: "Open in Browser", run: () => api.openUrl(url) },
-      actions: [{ id: "copy", title: "Copy URL", keys: ["Ctrl", "Shift", "C"], run: () => copyUrl(url) }],
-    });
-  }
+  if (url) out.push(websiteEntry(url, "url", `Open ${url.replace(/^https?:\/\//i, "")}`));
 
   if (path) {
     out.push({

@@ -18,6 +18,8 @@ export interface Home {
   favorites: Item[];
   suggestions: Item[];
   applications: Item[];
+  /** Every pin in order: app ids, "cmd:…" built-in commands and "web:…" websites. */
+  pins: string[];
 }
 
 export type SearchEngine = "google" | "duckduckgo" | "bing";

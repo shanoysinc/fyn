@@ -31,7 +31,8 @@ const HOME_LAYOUTS: [&str; 2] = ["grid", "list"];
 const MAX_QUERY_LEN: usize = 256;
 const MAX_ID_LEN: usize = 2048;
 const SEARCH_LIMIT: usize = 50;
-const SUGGESTION_COUNT: usize = 5;
+/// Enough for three rows of icons on the home screen plus "View all suggestions".
+const SUGGESTION_COUNT: usize = 48;
 
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -63,9 +64,39 @@ impl Item {
 
 #[derive(Serialize)]
 pub struct Home {
+    /// Pinned apps, in pin order.
     favorites: Vec<Item>,
     suggestions: Vec<Item>,
     applications: Vec<Item>,
+    /// Every pin in order: app ids plus built-in commands ("cmd:…") and websites
+    /// ("web:…"), which the UI turns into entries itself.
+    pins: Vec<String>,
+}
+
+/// Pin id prefix for a built-in command or Settings page, e.g. "cmd:sys:lock", "cmd:ms:display".
+const PIN_COMMAND: &str = "cmd:";
+/// Pin id prefix for a website, e.g. "web:https://github.com".
+const PIN_WEBSITE: &str = "web:";
+const MAX_COMMAND_ID_LEN: usize = 64;
+
+/// What can be pinned: an installed app (by catalogue id), a built-in command (a short
+/// lower-case id; the UI owns the list and ignores unknown ones) or an http(s) website.
+fn validate_pin(apps: &[App], id: &str) -> Result<(), String> {
+    check_id(id)?;
+    if let Some(cmd) = id.strip_prefix(PIN_COMMAND) {
+        let valid = !cmd.is_empty()
+            && cmd.len() <= MAX_COMMAND_ID_LEN
+            && cmd.chars().all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == ':' || c == '-');
+        return if valid { Ok(()) } else { Err("Invalid command".into()) };
+    }
+    if let Some(url) = id.strip_prefix(PIN_WEBSITE) {
+        return system::validate_url(url);
+    }
+    if apps.iter().any(|a| a.id == id) {
+        Ok(())
+    } else {
+        Err("That app is no longer installed".into())
+    }
 }
 
 #[derive(Serialize)]
@@ -135,7 +166,7 @@ pub fn get_home(state: State<AppState>) -> Home {
         .map(|a| Item::new(a, pinned.contains(a.id.as_str()), Vec::new()))
         .collect();
 
-    Home { favorites, suggestions, applications }
+    Home { favorites, suggestions, applications, pins }
 }
 
 #[tauri::command]
@@ -182,12 +213,12 @@ pub fn reveal(app: AppHandle, state: State<AppState>, id: String) -> Result<(), 
 
 #[tauri::command]
 pub fn toggle_pin(state: State<AppState>, id: String) -> Result<bool, String> {
-    let target = find(&state, &id)?;
+    validate_pin(&state.apps(), &id)?;
     state
         .store
         .lock()
         .unwrap()
-        .toggle_pin(&target.id)
+        .toggle_pin(&id)
         .map_err(|e| e.to_string())
 }
 
@@ -431,6 +462,38 @@ mod tests {
 
     fn store() -> Store {
         Store::open(Path::new(":memory:")).unwrap()
+    }
+
+    #[test]
+    fn pins_accept_apps_commands_and_websites_only() {
+        let apps = vec![App {
+            id: "lnk:code".into(),
+            name: "Code".into(),
+            kind: AppKind::Desktop,
+            launch: r"C:\Code.lnk".into(),
+            target: None,
+            icon: None,
+            stamp: 0,
+        }];
+        // Installed apps, by id.
+        assert!(validate_pin(&apps, "lnk:code").is_ok());
+        assert!(validate_pin(&apps, "lnk:gone").is_err());
+        // Built-in commands and Settings pages.
+        assert!(validate_pin(&apps, "cmd:sys:lock").is_ok());
+        assert!(validate_pin(&apps, "cmd:ms:network-wifi").is_ok());
+        assert!(validate_pin(&apps, "cmd:").is_err());
+        assert!(validate_pin(&apps, "cmd:Sys Lock").is_err());
+        assert!(validate_pin(&apps, "cmd:x\"&calc").is_err());
+        assert!(validate_pin(&apps, &format!("cmd:{}", "a".repeat(65))).is_err());
+        // Websites: http(s) only, no spaces or quotes.
+        assert!(validate_pin(&apps, "web:https://github.com").is_ok());
+        assert!(validate_pin(&apps, "web:http://localhost:3000").is_ok());
+        assert!(validate_pin(&apps, "web:file:///C:/Windows/System32/calc.exe").is_err());
+        assert!(validate_pin(&apps, "web:javascript:alert(1)").is_err());
+        assert!(validate_pin(&apps, "web:https://exa mple.com").is_err());
+        // Anything else.
+        assert!(validate_pin(&apps, "").is_err());
+        assert!(validate_pin(&apps, "path:C:\\Windows").is_err());
     }
 
     #[test]

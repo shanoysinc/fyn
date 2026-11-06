@@ -25,10 +25,12 @@ export const SPOTIFY = makeItem({
 });
 
 export function makeHome(over: Partial<Home> = {}): Home {
+  const favorites = over.favorites ?? [{ ...CHROME, pinned: true }];
   return {
-    favorites: [{ ...CHROME, pinned: true }],
+    favorites,
     suggestions: [CODE],
     applications: [{ ...CHROME, pinned: true }, CODE, SPOTIFY],
+    pins: favorites.map((f) => f.id),
     ...over,
   };
 }
