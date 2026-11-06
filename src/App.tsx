@@ -640,7 +640,12 @@ export function App() {
             <EmojiView onBack={back} />
           </Suspense>
         ) : view === "miniapps" ? (
-          <MiniAppsView onBack={back} onOpen={(v) => openView(v)} />
+          <MiniAppsView
+            onBack={back}
+            onOpen={(v) => openView(v)}
+            pinned={pinnedIds}
+            onTogglePin={(pinId, title) => ctx.togglePin(pinId, title)}
+          />
         ) : view === "clean" ? (
           <CleanView onBack={returnTo ? backTo(returnTo) : back} />
         ) : view === "clipboard" ? (

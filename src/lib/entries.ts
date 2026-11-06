@@ -22,11 +22,13 @@ export type View =
 export type GlyphName =
   | "lock" | "moon" | "restart" | "power" | "logout" | "trash" | "contrast"
   | "emoji" | "droplet" | "gear" | "sparkle" | "download" | "globe" | "search"
-  | "folder" | "file" | "calculator" | "sliders" | "grid" | "clipboard" | "text" | "doc" | "broom" | "apps";
+  | "folder" | "file" | "calculator" | "sliders" | "grid" | "clipboard" | "text" | "doc" | "broom" | "apps"
+  | "sparkles" | "eyedropper";
 
 export type EntryIcon =
   | { kind: "app"; item: Item }
-  | { kind: "glyph"; glyph: GlyphName; tint: string }
+  /** `gradient` makes it an app-style icon (mini apps). */
+  | { kind: "glyph"; glyph: GlyphName; tint: string; gradient?: [string, string] }
   | { kind: "swatch"; color: string };
 
 /** What a command may ask of the launcher. */
@@ -111,6 +113,7 @@ interface CommandDef {
   primaryTitle: string;
   run: EntryAction["run"];
   confirm?: string;
+  gradient?: [string, string];
 }
 
 const system = (
@@ -161,12 +164,13 @@ export const COMMANDS: CommandDef[] = [
   system("toggle-dark-mode", "Toggle Windows Dark Mode", "contrast", ["dark mode", "light mode", "windows theme"]),
 
   fyn("miniapps", "Mini Apps", "apps", ["mini apps", "tools", "utilities", "apps"], (c) => c.openView("miniapps")),
-  ...MINI_APPS.map((app) => fyn(app.id, app.title, app.glyph, app.keywords, (c) => c.openView(app.view))),
-  fyn("clipboard", "Clipboard History", "clipboard", ["clipboard", "paste", "copied", "history", "copy"], (c) =>
-    c.openView("clipboard"),
-  ),
-  fyn("emoji", "Search Emoji", "emoji", ["emoji", "emoticon", "symbols", "smiley"], (c) => c.openView("emoji")),
-  fyn("color", "Pick Color", "droplet", ["color picker", "colour", "eyedropper", "hex", "rgb"], (c) => c.openView("color")),
+  // Each mini app is also a command (searchable, pinnable), with its app icon.
+  ...MINI_APPS.map((app) => ({
+    ...fyn(app.id, app.title, app.glyph, app.keywords, (c) => c.openView(app.view), "Open"),
+    subtitle: "Mini App",
+    tint: app.gradient[1],
+    gradient: app.gradient,
+  })),
   fyn("settings", "Fyn Settings", "gear", ["preferences", "options", "config"], (c) => c.openView("settings")),
   fyn("updates", "Check for Updates", "download", ["update", "upgrade", "version"], (c) => c.checkForUpdates(), "Check Now"),
   fyn("welcome", "Welcome to Fyn", "sparkle", ["help", "tutorial", "tips", "onboarding", "getting started"], (c) =>
@@ -220,7 +224,7 @@ function commandEntry(def: CommandDef, matches: number[] = []): Entry {
     id: def.id,
     title: def.title,
     subtitle: def.subtitle,
-    icon: { kind: "glyph", glyph: def.glyph, tint: def.tint },
+    icon: { kind: "glyph", glyph: def.glyph, tint: def.tint, gradient: def.gradient },
     matches,
     primary: { id: "open", title: def.primaryTitle, run: def.run },
     confirm: def.confirm,

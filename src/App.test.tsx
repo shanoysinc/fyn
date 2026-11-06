@@ -510,7 +510,7 @@ describe("screens", () => {
     const { user } = await setup();
     await user.click(screen.getByRole("button", { name: "Mini Apps" }));
     await screen.findByText("Free up disk space: temp files, caches, crash dumps and more");
-    await user.keyboard("{Enter}");
+    await user.keyboard("{ArrowDown}{Enter}"); // Clean Windows is second, after Clipboard History
     await screen.findByText("Never touch anything named");
     await user.keyboard("{Escape}");
     await screen.findByText("Free up disk space: temp files, caches, crash dumps and more"); // back to Mini Apps

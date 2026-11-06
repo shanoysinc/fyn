@@ -93,8 +93,23 @@ const PATHS: Record<GlyphName, ReactNode> = {
   sliders: <path d="M5 7h9M18 7h1M5 17h1M10 17h9M16 5v4M8 15v4" />,
   clipboard: (
     <>
-      <rect x="6" y="4.5" width="12" height="16" rx="2" />
-      <path d="M9.5 4.5V4a1 1 0 0 1 1-1h3a1 1 0 0 1 1 1v.5M9 10h6M9 14h4" />
+      <path d="M8.5 5H7a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-1.5" />
+      <rect x="8.5" y="3" width="7" height="4" rx="1.2" />
+      <path d="M8.5 12h7M8.5 16h4.5" />
+    </>
+  ),
+  sparkles: (
+    <>
+      <path d="M10 4.5l1.6 4.4 4.4 1.6-4.4 1.6L10 16.5l-1.6-4.4L4 10.5l4.4-1.6Z" />
+      <path d="M18 14v5M15.5 16.5h5" />
+      <path d="M17.5 3.5v3M16 5h3" />
+    </>
+  ),
+  eyedropper: (
+    <>
+      <path d="M13.5 6.5l1.8-1.8a2.3 2.3 0 0 1 3.3 3.3l-1.8 1.8" />
+      <path d="M11.5 7.5l5 5" />
+      <path d="M14 10l-7.3 7.3a2 2 0 0 1-1 .55L4 18.3l.45-1.7a2 2 0 0 1 .55-1L12.3 8.3" />
     </>
   ),
   text: <path d="M5 7h14M5 12h14M5 17h9" />,
@@ -152,6 +167,7 @@ export function EntryIconView({ icon }: { icon: EntryIcon }) {
     case "app":
       return <AppIcon item={icon.item} />;
     case "glyph":
+      if (icon.gradient) return <MiniAppIcon glyph={icon.glyph} gradient={icon.gradient} />;
       return (
         <span className="glyph-tile" style={{ background: icon.tint }}>
           <Glyph name={icon.glyph} size={15} />
@@ -160,4 +176,20 @@ export function EntryIconView({ icon }: { icon: EntryIcon }) {
     case "swatch":
       return <span className="glyph-tile glyph-tile--swatch" style={{ background: icon.color }} />;
   }
+}
+
+/**
+ * App-style icon for mini apps: a rounded tile with a gradient, a soft highlight along
+ * the top and a small shadow, with a bold white symbol. Scales with its container
+ * (24px in lists, 40px in the icon row, 46px on the Mini Apps screen).
+ */
+export function MiniAppIcon({ glyph, gradient, size = 15 }: { glyph: GlyphName; gradient: [string, string]; size?: number }) {
+  return (
+    <span
+      className="mini-icon"
+      style={{ "--from": gradient[0], "--to": gradient[1] } as React.CSSProperties}
+    >
+      <Glyph name={glyph} size={size} />
+    </span>
+  );
 }

@@ -63,7 +63,7 @@ No tool can recognise a human-chosen password like `Summer2024!` (it looks like 
 
 ### Mini Apps
 
-Small built-in tools with their own screen. Open them from the **Mini Apps** button next to Settings at the bottom of Fyn, or search for them by name (and pin them like anything else).
+Small built-in tools with their own screen: **Clipboard History**, **Clean Windows**, **Color Picker** and **Emoji Picker**. Open them from the **Mini Apps** button next to Settings at the bottom of Fyn, or search for them by name. Add any of them to Favorites with the star on the Mini Apps screen, <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>P</kbd> or right-click.
 
 **Clean Windows** frees disk space. It scans first (read-only) and shows what each category would free; nothing is deleted until you press <kbd>Enter</kbd> twice.
 

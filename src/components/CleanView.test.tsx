@@ -1,4 +1,4 @@
-import { render, screen, waitFor } from "@testing-library/react";
+import { fireEvent, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { makeCategory, makeScanReport } from "../test/fixtures";
@@ -115,11 +115,46 @@ describe("selection", () => {
 });
 
 describe("Mini Apps screen", () => {
-  it("lists Clean Windows and opens it with Enter", async () => {
+  function setupMini(pinned: string[] = []) {
     const onOpen = vi.fn();
-    render(<MiniAppsView onBack={vi.fn()} onOpen={onOpen} />);
-    expect(screen.getByText("Clean Windows")).toBeInTheDocument();
-    await userEvent.setup().keyboard("{Enter}");
+    const onTogglePin = vi.fn(async (_id: string, title: string) => `Added ${title} to Favorites`);
+    render(<MiniAppsView onBack={vi.fn()} onOpen={onOpen} pinned={new Set(pinned)} onTogglePin={onTogglePin} />);
+    return { user: userEvent.setup(), onOpen, onTogglePin };
+  }
+
+  it("lists the mini apps with app icons, and opens the selected one with Enter", async () => {
+    const { user, onOpen } = setupMini();
+    const titles = [...document.querySelectorAll(".miniapp__title")].map((t) => t.textContent);
+    expect(titles).toEqual(["Clipboard History", "Clean Windows", "Color Picker", "Emoji Picker"]);
+    expect(document.querySelectorAll(".miniapp .mini-icon")).toHaveLength(4);
+    await user.keyboard("{ArrowDown}{Enter}");
     expect(onOpen).toHaveBeenCalledWith("clean");
+  });
+
+  it("the star adds a mini app to Favorites without opening it", async () => {
+    const { user, onOpen, onTogglePin } = setupMini();
+    await user.click(screen.getByRole("button", { name: "Add Color Picker to Favorites" }));
+    expect(onTogglePin).toHaveBeenCalledWith("cmd:fyn:color", "Color Picker");
+    expect(onOpen).not.toHaveBeenCalled();
+    await waitFor(() => expect(toast()).toBe("Added Color Picker to Favorites"));
+  });
+
+  it("shows which ones are already favorites", () => {
+    setupMini(["cmd:fyn:clipboard"]);
+    expect(screen.getByRole("button", { name: "Remove Clipboard History from Favorites" })).toHaveAttribute("aria-pressed", "true");
+    expect(screen.getByRole("button", { name: "Add Clean Windows to Favorites" })).toHaveAttribute("aria-pressed", "false");
+  });
+
+  it("Ctrl+Shift+P and right-click work too", async () => {
+    const { user, onTogglePin, onOpen } = setupMini();
+    await user.keyboard("{ArrowDown}{Control>}{Shift>}P{/Shift}{/Control}");
+    expect(onTogglePin).toHaveBeenLastCalledWith("cmd:fyn:clean-windows", "Clean Windows");
+
+    fireEvent.contextMenu(document.querySelectorAll(".miniapp")[3], { clientX: 50, clientY: 60 });
+    await user.click(await screen.findByText("Add to Favorites", { selector: ".actions__item span" }));
+    expect(onTogglePin).toHaveBeenLastCalledWith("cmd:fyn:emoji", "Emoji Picker");
+    fireEvent.contextMenu(document.querySelectorAll(".miniapp")[3], { clientX: 50, clientY: 60 });
+    await user.click(await screen.findByText("Open", { selector: ".actions__item span" }));
+    expect(onOpen).toHaveBeenCalledWith("emoji");
   });
 });
