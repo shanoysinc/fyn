@@ -72,6 +72,10 @@ export function App() {
   const [toast, setToast] = useState<Toast | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
 
+  /** How the current screen arrived, which picks its entrance animation. */
+  const [nav, setNav] = useState<"forward" | "back" | "intro" | "none">("none");
+  const launcherRef = useRef<HTMLDivElement>(null);
+  const enterTimer = useRef<number | undefined>(undefined);
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const searchSeq = useRef(0);
@@ -93,7 +97,19 @@ export function App() {
   const openView = useCallback((next: View, arg?: string) => {
     setPanel(null);
     setViewArg(arg);
+    setNav(next === "welcome" ? "intro" : "forward");
     setView(next);
+  }, []);
+
+  // Replay the "open" entrance each time the window is shown (it's never recreated).
+  const playEnter = useCallback(() => {
+    const el = launcherRef.current;
+    if (!el) return;
+    el.classList.remove("launcher--enter");
+    void el.offsetWidth; // restart the CSS animations
+    el.classList.add("launcher--enter");
+    window.clearTimeout(enterTimer.current);
+    enterTimer.current = window.setTimeout(() => el.classList.remove("launcher--enter"), 700);
   }, []);
 
   const loadHome = useCallback(() => {
@@ -146,11 +162,13 @@ export function App() {
   useEffect(() => {
     loadHome();
     loadSettings(true);
+    playEnter();
     const offs = [
       on(events.shown, () => {
         loadHome();
         loadSettings(true);
         focusInput();
+        playEnter();
       }),
       on(events.hidden, () => {
         // Reset while hidden so the next open starts clean without flicker.
@@ -158,6 +176,7 @@ export function App() {
         setResults(null);
         setPanel(null);
         setConfirming(null);
+        setNav("none");
         setView("root");
         listRef.current?.scrollTo({ top: 0 });
       }),
@@ -166,7 +185,7 @@ export function App() {
       on<UpdateInfo>(events.updateAvailable, setUpdate),
     ];
     return () => offs.forEach((off) => off());
-  }, [loadHome, loadSettings, refresh, focusInput, openView]);
+  }, [loadHome, loadSettings, refresh, focusInput, openView, playEnter]);
 
   const sections: Section[] = useMemo(() => {
     if (results) {
@@ -334,6 +353,8 @@ export function App() {
     const onKey = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key.toLowerCase() === "d") {
         e.preventDefault();
+        // Only animates if we were on another screen (same key = no remount).
+        setNav("back");
         setView("root");
         setPanel((p) => (p === "dev" ? null : "dev"));
       }
@@ -343,6 +364,7 @@ export function App() {
   }, []);
 
   const back = useCallback(() => {
+    setNav("back");
     setView("root");
     loadSettings();
     focusInput();
@@ -389,167 +411,165 @@ export function App() {
     }
   };
 
-  if (view === "settings") {
-    return (
-      <div className="launcher">
-        <SettingsView
-          onBack={back}
-          onShowWelcome={() => openView("welcome")}
-          update={update}
-          onUpdate={setUpdate}
-        />
-      </div>
-    );
-  }
-  if (view === "welcome") {
-    return (
-      <div className="launcher">
-        <WelcomeView
-          settings={settings}
-          onDone={finishWelcome}
-          onChangeHotkey={() => {
-            finishWelcome();
-            openView("settings");
-          }}
-        />
-      </div>
-    );
-  }
-  if (view === "emoji") {
-    return (
-      <div className="launcher">
-        <Suspense fallback={null}>
-          <EmojiView onBack={back} />
-        </Suspense>
-      </div>
-    );
-  }
-  if (view === "color") {
-    return (
-      <div className="launcher">
-        <ColorView initial={viewArg} onBack={back} />
-      </div>
-    );
-  }
-
-  const confirmingCurrent = current && confirming === current.id;
-
+  // The panel (and its acrylic surface) stays put; only the screen inside it changes,
+  // keyed by view so each new screen plays its entrance.
   return (
-    <div className="launcher">
-      <Command
-        className="cmdk"
-        label="Fyn"
-        shouldFilter={false}
-        loop
-        value={selected}
-        onValueChange={setSelected}
-        onKeyDown={onKeyDown}
-      >
-        <div className="search">
-          <SearchIcon />
-          <Command.Input
-            ref={inputRef}
-            className="search__input"
-            value={query}
-            onValueChange={setQuery}
-            placeholder="Search apps, commands, or do math…"
-            autoFocus
-            spellCheck={false}
-            maxLength={256}
+    <div className="launcher" ref={launcherRef}>
+      <div key={view} className={`screen screen--${nav}`}>
+        {view === "settings" ? (
+          <SettingsView
+            onBack={back}
+            onShowWelcome={() => openView("welcome")}
+            update={update}
+            onUpdate={setUpdate}
           />
-        </div>
+        ) : view === "welcome" ? (
+          <WelcomeView
+            settings={settings}
+            onDone={finishWelcome}
+            onChangeHotkey={() => {
+              finishWelcome();
+              openView("settings");
+            }}
+          />
+        ) : view === "emoji" ? (
+          <Suspense fallback={null}>
+            <EmojiView onBack={back} />
+          </Suspense>
+        ) : view === "color" ? (
+          <ColorView initial={viewArg} onBack={back} />
+        ) : (
+          renderRoot()
+        )}
+      </div>
+    </div>
+  );
 
-        <Command.List ref={listRef} className="list">
-          {home && <Command.Empty className="empty">No results for “{query}”</Command.Empty>}
-          {sections.map((s) => (
-            <Command.Group key={s.key} heading={s.title} className="group">
-              {s.entries.map((entry) => (
-                <Row
-                  key={entry.id}
-                  value={valueOf(s.key, entry.id)}
-                  entry={entry}
-                  onRun={() => void runEntry(entry)}
-                />
-              ))}
-            </Command.Group>
-          ))}
-        </Command.List>
-      </Command>
+  function renderRoot() {
+    const confirmingCurrent = current && confirming === current.id;
 
-      <footer className="footer">
-        <div className="footer__left">
-          {toast ? (
-            <span className={`toast ${toast.error ? "toast--error" : ""}`}>{toast.text}</span>
-          ) : (
-            <>
-              <button
-                className="icon-btn"
-                aria-label="Settings"
-                title="Settings (Ctrl+,)"
-                onClick={() => openView("settings")}
+    return (
+      <>
+        <Command
+          className="cmdk"
+          label="Fyn"
+          shouldFilter={false}
+          loop
+          value={selected}
+          onValueChange={setSelected}
+          onKeyDown={onKeyDown}
+        >
+          <div className="search">
+            <SearchIcon />
+            <Command.Input
+              ref={inputRef}
+              className="search__input"
+              value={query}
+              onValueChange={setQuery}
+              placeholder="Search apps, commands, or do math…"
+              autoFocus
+              spellCheck={false}
+              maxLength={256}
+            />
+          </div>
+
+          <Command.List ref={listRef} className="list">
+            {home && <Command.Empty className="empty">No results for “{query}”</Command.Empty>}
+            {sections.map((s, i) => (
+              <Command.Group
+                key={s.key}
+                heading={s.title}
+                className="group"
+                style={{ "--g": i } as React.CSSProperties}
               >
-                <GearIcon />
-              </button>
-              {update && (
-                <button className="pill" onClick={() => openView("settings")} title="Open Settings to install">
-                  Update {update.version} available
-                </button>
-              )}
-              {DEV && (
-                <button className="pill pill--dev" onClick={() => setPanel("dev")} title="Developer menu (Ctrl+Shift+D)">
-                  DEV
-                </button>
-              )}
-            </>
-          )}
-        </div>
-        {current && (
-          <div className="footer__right">
-            <button className="footer__action" onClick={() => void runEntry(current)}>
-              {confirmingCurrent ? "Press ↵ to Confirm" : current.primary.title} <Kbd keys={["↵"]} />
-            </button>
-            {panelActions.length > 1 && (
+                {s.entries.map((entry) => (
+                  <Row
+                    key={entry.id}
+                    value={valueOf(s.key, entry.id)}
+                    entry={entry}
+                    onRun={() => void runEntry(entry)}
+                  />
+                ))}
+              </Command.Group>
+            ))}
+          </Command.List>
+        </Command>
+
+        <footer className="footer">
+          <div className="footer__left">
+            {toast ? (
+              <span className={`toast ${toast.error ? "toast--error" : ""}`}>{toast.text}</span>
+            ) : (
               <>
-                <span className="footer__divider" />
-                <button className="footer__action" onClick={() => setPanel((p) => (p === "actions" ? null : "actions"))}>
-                  Actions <Kbd keys={["Ctrl", "K"]} />
+                <button
+                  className="icon-btn"
+                  aria-label="Settings"
+                  title="Settings (Ctrl+,)"
+                  onClick={() => openView("settings")}
+                >
+                  <GearIcon />
                 </button>
+                {update && (
+                  <button className="pill" onClick={() => openView("settings")} title="Open Settings to install">
+                    Update {update.version} available
+                  </button>
+                )}
+                {DEV && (
+                  <button className="pill pill--dev" onClick={() => setPanel("dev")} title="Developer menu (Ctrl+Shift+D)">
+                    DEV
+                  </button>
+                )}
               </>
             )}
           </div>
+          {current && (
+            <div className="footer__right">
+              <button className="footer__action" onClick={() => void runEntry(current)}>
+                {confirmingCurrent ? "Press ↵ to Confirm" : current.primary.title} <Kbd keys={["↵"]} />
+              </button>
+              {panelActions.length > 1 && (
+                <>
+                  <span className="footer__divider" />
+                  <button className="footer__action" onClick={() => setPanel((p) => (p === "actions" ? null : "actions"))}>
+                    Actions <Kbd keys={["Ctrl", "K"]} />
+                  </button>
+                </>
+              )}
+            </div>
+          )}
+        </footer>
+
+        {panel === "actions" && current && (
+          <ActionPanel
+            title={current.title}
+            actions={panelActions}
+            onRun={(id) => void runEntry(current, id)}
+            onClose={() => {
+              setPanel(null);
+              focusInput();
+            }}
+          />
         )}
-      </footer>
 
-      {panel === "actions" && current && (
-        <ActionPanel
-          title={current.title}
-          actions={panelActions}
-          onRun={(id) => void runEntry(current, id)}
-          onClose={() => {
-            setPanel(null);
-            focusInput();
-          }}
-        />
-      )}
-
-      {DEV && panel === "dev" && (
-        <ActionPanel
-          title="Developer: open a screen or state"
-          placeholder="Search dev actions…"
-          actions={devActions}
-          onRun={(id) => {
-            setPanel(null);
-            devActions.find((a) => a.id === id)?.run();
-            focusInput();
-          }}
-          onClose={() => {
-            setPanel(null);
-            focusInput();
-          }}
-        />
-      )}
-    </div>
-  );
+        {DEV && panel === "dev" && (
+          <ActionPanel
+            title="Developer: open a screen or state"
+            placeholder="Search dev actions…"
+            actions={devActions}
+            onRun={(id) => {
+              setPanel(null);
+              devActions.find((a) => a.id === id)?.run();
+              focusInput();
+            }}
+            onClose={() => {
+              setPanel(null);
+              focusInput();
+            }}
+          />
+        )}
+      </>
+    );
+  }
 }
 
 const Row = memo(function Row({ entry, value, onRun }: { entry: Entry; value: string; onRun: () => void }) {

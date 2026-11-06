@@ -1,5 +1,7 @@
 :root {
   --font: "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  --ease-out: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-spring: cubic-bezier(0.34, 1.45, 0.64, 1);
   --surface: rgba(248, 248, 250, 0.78);
   --surface-strong: rgba(255, 255, 255, 0.55);
   --text: #1c1c1e;
@@ -97,6 +99,7 @@ button {
   flex-direction: column;
   height: 100%;
   background: var(--surface);
+  overflow: hidden;
 }
 
 .cmdk {
@@ -190,6 +193,7 @@ button {
   border-radius: 9px;
   content-visibility: auto;
   contain-intrinsic-size: auto 44px;
+  transition: background-color 90ms ease-out;
 }
 
 .row:hover {
@@ -329,7 +333,7 @@ button {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  animation: fade-in 120ms ease-out;
+  animation: toast-in 200ms var(--ease-out);
 }
 
 .toast--error {
@@ -374,7 +378,8 @@ button {
   background: var(--popover);
   box-shadow: var(--shadow);
   overflow: hidden;
-  animation: pop-in 110ms ease-out;
+  animation: pop-in 180ms var(--ease-out);
+  transform-origin: bottom right;
 }
 
 .actions__title {
@@ -550,7 +555,7 @@ button {
 @keyframes pop-in {
   from {
     opacity: 0;
-    transform: translateY(4px) scale(0.98);
+    transform: translateY(6px) scale(0.96);
   }
 }
 
@@ -785,7 +790,6 @@ button {
   height: 100%;
   padding: 26px 28px 18px;
   gap: 18px;
-  animation: fade-in 200ms ease-out;
 }
 
 .welcome__hero {
@@ -920,4 +924,182 @@ button {
   color: var(--text);
   font-weight: 600;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12);
+}
+
+/* =====================================================================
+   Motion
+   Fast, purposeful, interruptible: 150–300 ms with an expo-out curve.
+   The panel itself never moves (it carries the acrylic backdrop); only
+   its contents do. All of this is disabled by "reduce motion" above.
+   ===================================================================== */
+
+.screen {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+/* Screen changes: forward pushes in from the right, back returns from the left. */
+.screen--forward {
+  animation: screen-forward 260ms var(--ease-out);
+}
+
+.screen--back {
+  animation: screen-back 260ms var(--ease-out);
+}
+
+.screen--intro {
+  animation: fade-in 240ms ease-out;
+}
+
+@keyframes screen-forward {
+  from {
+    opacity: 0;
+    transform: translateX(24px);
+  }
+}
+
+@keyframes screen-back {
+  from {
+    opacity: 0;
+    transform: translateX(-24px);
+  }
+}
+
+@keyframes rise-in {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+
+@keyframes toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+}
+
+/* Opening Fyn: search first, then section headings and rows cascade in.
+   Each group sets --g (its index); each row's --r is its position in the group. */
+.launcher--enter .search {
+  animation: rise-in 220ms var(--ease-out) both;
+}
+
+.launcher--enter .group [cmdk-group-heading] {
+  animation: fade-in 260ms ease-out both;
+  animation-delay: calc(40ms + var(--g, 0) * 50ms);
+}
+
+.launcher--enter .row {
+  animation: rise-in 300ms var(--ease-out) both;
+  animation-delay: calc(50ms + var(--g, 0) * 50ms + var(--r, 0) * 18ms);
+}
+
+.launcher--enter .footer {
+  animation: fade-in 300ms ease-out 120ms both;
+}
+
+.row:nth-child(2) { --r: 1; }
+.row:nth-child(3) { --r: 2; }
+.row:nth-child(4) { --r: 3; }
+.row:nth-child(5) { --r: 4; }
+.row:nth-child(6) { --r: 5; }
+.row:nth-child(7) { --r: 6; }
+.row:nth-child(8) { --r: 7; }
+.row:nth-child(n + 9) { --r: 8; }
+
+/* Welcome: the logo springs in, then everything else follows in reading order. */
+.welcome > * {
+  animation: rise-in 460ms var(--ease-out) both;
+}
+
+.welcome > :nth-child(2) { animation-delay: 120ms; }
+.welcome > :nth-child(4) { animation-delay: 560ms; }
+
+.welcome > .welcome__hero {
+  animation: none;
+}
+
+.welcome > .welcome__tips {
+  animation: none;
+}
+
+.welcome__logo {
+  animation:
+    logo-pop 720ms var(--ease-spring) both,
+    logo-glow 2.6s ease-in-out 800ms;
+}
+
+.welcome__hero h1,
+.welcome__hero p {
+  animation: rise-in 460ms var(--ease-out) both;
+}
+
+.welcome__hero h1 { animation-delay: 80ms; }
+.welcome__hero p { animation-delay: 140ms; }
+
+.welcome__tips li {
+  animation: rise-in 420ms var(--ease-out) both;
+  animation-delay: calc(220ms + var(--i, 0) * 55ms);
+}
+
+.welcome__tips li:nth-child(2) { --i: 1; }
+.welcome__tips li:nth-child(3) { --i: 2; }
+.welcome__tips li:nth-child(4) { --i: 3; }
+.welcome__tips li:nth-child(5) { --i: 4; }
+.welcome__tips li:nth-child(6) { --i: 5; }
+
+@keyframes logo-pop {
+  from {
+    opacity: 0;
+    transform: scale(0.55) rotate(-10deg);
+  }
+}
+
+@keyframes logo-glow {
+  50% {
+    box-shadow: 0 8px 36px rgba(124, 58, 237, 0.6);
+  }
+}
+
+/* Settings: sections settle in one after another when you arrive. */
+.screen--forward .settings__body > * {
+  animation: rise-in 320ms var(--ease-out) both;
+  animation-delay: calc(60ms + var(--i, 0) * 28ms);
+}
+
+.settings__body > :nth-child(2) { --i: 1; }
+.settings__body > :nth-child(3) { --i: 2; }
+.settings__body > :nth-child(4) { --i: 3; }
+.settings__body > :nth-child(5) { --i: 4; }
+.settings__body > :nth-child(6) { --i: 5; }
+.settings__body > :nth-child(7) { --i: 6; }
+.settings__body > :nth-child(n + 8) { --i: 7; }
+
+/* Small touches */
+.switch__thumb {
+  transition: transform 220ms var(--ease-spring);
+}
+
+.segmented__item {
+  transition: background-color 140ms ease-out, color 140ms ease-out, box-shadow 140ms ease-out;
+}
+
+.emoji-cell {
+  transition: background-color 90ms ease-out, transform 160ms var(--ease-spring);
+}
+
+.emoji-cell--selected {
+  transform: scale(1.08);
+}
+
+.pill {
+  animation: rise-in 320ms var(--ease-out) both;
+}
+
+.color-view__swatch {
+  transition: background 220ms var(--ease-out), color 220ms var(--ease-out);
 }

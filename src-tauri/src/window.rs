@@ -83,7 +83,7 @@ pub fn open_settings(app: &AppHandle) {
     let _ = app.emit(EVT_OPEN_SETTINGS, ());
 }
 
-/// Centre horizontally, upper third vertically, on the monitor under the cursor.
+/// Centre horizontally, slightly above centre vertically, on the monitor under the cursor.
 fn position_on_active_monitor(app: &AppHandle, win: &WebviewWindow) {
     let Ok(cursor) = app.cursor_position() else { return };
     let Ok(Some(monitor)) = app.monitor_from_point(cursor.x, cursor.y) else { return };
@@ -91,6 +91,7 @@ fn position_on_active_monitor(app: &AppHandle, win: &WebviewWindow) {
 
     let area = monitor.work_area();
     let x = area.position.x + (area.size.width as i32 - size.width as i32) / 2;
-    let y = area.position.y + (area.size.height as i32 - size.height as i32) / 4;
+    // 40% of the free space above the window: just above centre, where the eye rests.
+    let y = area.position.y + (area.size.height as i32 - size.height as i32) * 2 / 5;
     let _ = win.set_position(PhysicalPosition::new(x, y.max(area.position.y)));
 }
