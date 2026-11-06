@@ -69,6 +69,8 @@ export function App() {
   const [update, setUpdate] = useState<UpdateInfo | null>(null);
   const [selected, setSelected] = useState("");
   const [panel, setPanel] = useState<"actions" | "dev" | null>(null);
+  /** Where a right-click opened the actions menu; null = above the footer (Ctrl+K). */
+  const [panelAnchor, setPanelAnchor] = useState<{ x: number; y: number } | null>(null);
   const [toast, setToast] = useState<Toast | null>(null);
   const [confirming, setConfirming] = useState<string | null>(null);
 
@@ -394,7 +396,10 @@ export function App() {
 
     if (ctrl && e.key.toLowerCase() === "k") {
       e.preventDefault();
-      if (panelActions.length > 1) setPanel((p) => (p === "actions" ? null : "actions"));
+      if (panelActions.length > 1) {
+        setPanelAnchor(null);
+        setPanel((p) => (p === "actions" ? null : "actions"));
+      }
       return;
     }
     if (ctrl && e.key === ",") {
@@ -501,6 +506,13 @@ export function App() {
                     value={valueOf(s.key, entry.id)}
                     entry={entry}
                     onRun={() => void runEntry(entry)}
+                    onContextMenu={(e) => {
+                      // Right-click: select the row and open its actions at the pointer.
+                      e.preventDefault();
+                      setSelected(valueOf(s.key, entry.id));
+                      setPanelAnchor({ x: e.clientX, y: e.clientY });
+                      setPanel("actions");
+                    }}
                   />
                 ))}
               </Command.Group>
@@ -543,7 +555,13 @@ export function App() {
               {panelActions.length > 1 && (
                 <>
                   <span className="footer__divider" />
-                  <button className="footer__action" onClick={() => setPanel((p) => (p === "actions" ? null : "actions"))}>
+                  <button
+                    className="footer__action"
+                    onClick={() => {
+                      setPanelAnchor(null);
+                      setPanel((p) => (p === "actions" ? null : "actions"));
+                    }}
+                  >
                     Actions <Kbd keys={["Ctrl", "K"]} />
                   </button>
                 </>
@@ -556,6 +574,7 @@ export function App() {
           <ActionPanel
             title={current.title}
             actions={panelActions}
+            anchor={panelAnchor}
             onRun={(id) => void runEntry(current, id)}
             onClose={() => {
               setPanel(null);
@@ -585,9 +604,16 @@ export function App() {
   }
 }
 
-const Row = memo(function Row({ entry, value, onRun }: { entry: Entry; value: string; onRun: () => void }) {
+interface RowProps {
+  entry: Entry;
+  value: string;
+  onRun: () => void;
+  onContextMenu: (e: React.MouseEvent) => void;
+}
+
+const Row = memo(function Row({ entry, value, onRun, onContextMenu }: RowProps) {
   return (
-    <Command.Item value={value} className="row" onSelect={onRun}>
+    <Command.Item value={value} className="row" onSelect={onRun} onContextMenu={onContextMenu}>
       <EntryIconView icon={entry.icon} />
       <span className="row__name">
         {entry.prefix && <span className="row__prefix">{entry.prefix} </span>}
