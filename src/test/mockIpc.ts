@@ -37,7 +37,6 @@ export const api = {
   clipboardStatus: vi.fn(),
   setClipboardSettings: vi.fn(),
   clipboardList: vi.fn(),
-  clipboardReveal: vi.fn(),
   clipboardCopy: vi.fn(),
   clipboardPaste: vi.fn(),
   clipboardDelete: vi.fn(),

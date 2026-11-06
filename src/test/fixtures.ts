@@ -54,7 +54,6 @@ export function makeClipStatus(over: Partial<ClipStatus> = {}): ClipStatus {
   return {
     enabled: true,
     retentionDays: 7,
-    sensitive: "mask",
     clearSensitive: true,
     ignoredApps: ["keepassxc.exe", "1password.exe"],
     paused: false,
@@ -68,11 +67,9 @@ export function makeClip(over: Partial<ClipEntry> = {}): ClipEntry {
     id: 1,
     text: "hello world",
     truncated: false,
-    sensitive: false,
     chars: 11,
     source: "code.exe",
     created: Math.floor(Date.now() / 1000) - 120,
-    expiresIn: null,
     ...over,
   };
 }

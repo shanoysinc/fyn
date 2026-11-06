@@ -10,11 +10,11 @@ vi.mock("../lib/ipc", async (orig) => (await import("../test/mockIpc")).mockIpcM
 
 const LINK = makeClip({ id: 3, text: "https://github.com/shanoysinc/fyn", chars: 33, source: "chrome.exe" });
 const NOTE = makeClip({ id: 2, text: "Meeting moved to 3pm\nsecond line", chars: 31 });
-const SECRET = makeClip({ id: -1, text: null, sensitive: true, chars: 12, source: null, expiresIn: 42 });
+const COLOR = makeClip({ id: 4, text: "#7c3aed", chars: 7, source: null });
 
 beforeEach(() => {
   resetApi();
-  api.clipboardList.mockResolvedValue([SECRET, LINK, NOTE]);
+  api.clipboardList.mockResolvedValue([COLOR, LINK, NOTE]);
 });
 
 const toast = () => document.querySelector(".toast")?.textContent ?? null;
@@ -35,7 +35,7 @@ describe("turning clipboard history on", () => {
   it("explains what it keeps and how it protects you before anything is recorded", async () => {
     render(<ClipboardView onBack={vi.fn()} />);
     expect(await screen.findByText(/Copies from password managers are never recorded/)).toBeInTheDocument();
-    expect(screen.getByText(/card numbers are never kept/)).toBeInTheDocument();
+    expect(screen.getByText(/never kept, not even for a moment/)).toBeInTheDocument();
     expect(api.clipboardList).not.toHaveBeenCalled();
   });
 
@@ -65,11 +65,11 @@ describe("turning clipboard history on", () => {
 });
 
 describe("the history", () => {
-  it("lists items newest first, with password-like items masked and counting down", async () => {
+  it("lists items newest first with an icon for what they are", async () => {
     await setup();
     const rows = [...document.querySelectorAll(".clip__row")];
-    expect(rows[0]).toHaveTextContent("••••••••••••");
-    expect(rows[0]).toHaveTextContent("42s");
+    expect(rows[0]).toHaveTextContent("#7c3aed");
+    expect(rows[0].querySelector(".glyph-tile--swatch")).not.toBeNull(); // colour swatch
     expect(rows[1]).toHaveTextContent("https://github.com/shanoysinc/fyn");
     expect(rows[2]).toHaveTextContent("Meeting moved to 3pm"); // first line only
     expect(rows[2]).not.toHaveTextContent("second line");
@@ -84,7 +84,7 @@ describe("the history", () => {
     expect(preview).toHaveTextContent("33");
   });
 
-  it("search filters by text and never matches masked items", async () => {
+  it("search filters by text", async () => {
     const { user, input } = await setup();
     await user.type(input, "meeting");
     await waitFor(() => expect(document.querySelectorAll(".clip__row")).toHaveLength(1));
@@ -104,17 +104,6 @@ describe("the history", () => {
     expect(api.clipboardPaste).not.toHaveBeenCalled();
     await user.keyboard("{Control>}{Backspace}{/Control}");
     expect(api.clipboardDelete).toHaveBeenCalledWith(3);
-  });
-
-  it("reveals a password-like item only on request, and hides it again when you move away", async () => {
-    api.clipboardReveal.mockResolvedValue("kX9#mP2$vL7q");
-    const { user } = await setup();
-    expect(document.querySelector(".clip__preview")).not.toHaveTextContent("kX9#mP2$vL7q");
-    await user.keyboard("{Control>}{Shift>}R{/Shift}{/Control}");
-    expect(api.clipboardReveal).toHaveBeenCalledWith(-1);
-    await waitFor(() => expect(document.querySelector(".clip__preview")).toHaveTextContent("kX9#mP2$vL7q"));
-    await user.keyboard("{ArrowDown}{ArrowUp}");
-    expect(document.querySelector(".clip__preview")).not.toHaveTextContent("kX9#mP2$vL7q");
   });
 
   it("Clear all asks for a second press", async () => {
@@ -142,7 +131,7 @@ describe("the history", () => {
 
   it("refreshes when something new is copied", async () => {
     await setup();
-    api.clipboardList.mockResolvedValue([makeClip({ id: 9, text: "just copied" }), SECRET, LINK, NOTE]);
+    api.clipboardList.mockResolvedValue([makeClip({ id: 9, text: "just copied" }), COLOR, LINK, NOTE]);
     act(() => emit("fyn://clipboard-changed"));
     await waitFor(() => expect(document.querySelectorAll(".clip__row")).toHaveLength(4));
   });
@@ -189,12 +178,11 @@ describe("clipboard settings", () => {
     expect(api.setClipboardSettings).toHaveBeenCalledWith(expect.objectContaining({ enabled: false }));
   });
 
-  it("changes retention and password handling", async () => {
+  it("changes retention and clipboard clearing (there's no option to keep passwords)", async () => {
     const user = await setupSettings();
     await user.click(screen.getByRole("radio", { name: "30 days" }));
     expect(api.setClipboardSettings).toHaveBeenLastCalledWith(expect.objectContaining({ retentionDays: 30 }));
-    await user.click(screen.getByRole("radio", { name: "Don't keep" }));
-    expect(api.setClipboardSettings).toHaveBeenLastCalledWith(expect.objectContaining({ sensitive: "skip" }));
+    expect(screen.queryByText(/Password-like copies/)).not.toBeInTheDocument();
     await user.click(screen.getByRole("switch", { name: "Clear passwords from the clipboard" }));
     expect(api.setClipboardSettings).toHaveBeenLastCalledWith(expect.objectContaining({ clearSensitive: false }));
   });

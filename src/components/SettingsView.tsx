@@ -409,23 +409,10 @@ function ClipboardSettings({ onError }: { onError: (message: string | null) => v
 
           <section className="setting">
             <div>
-              <div className="setting__title">Password-like copies</div>
-              <div className="setting__desc">Hidden and kept in memory only, never saved.</div>
-            </div>
-            <Segmented
-              value={status.sensitive}
-              options={[
-                { value: "mask", label: "Hide for 1 min" },
-                { value: "skip", label: "Don't keep" },
-              ]}
-              onChange={(v) => void save({ sensitive: v as ClipSettings["sensitive"] })}
-            />
-          </section>
-
-          <section className="setting">
-            <div>
               <div className="setting__title">Clear passwords from the clipboard</div>
-              <div className="setting__desc">After a minute, unless you've copied something else since.</div>
+              <div className="setting__desc">
+                Passwords are never stored. This also takes one off the clipboard after a minute, unless you've copied something else since.
+              </div>
             </div>
             <button
               role="switch"

@@ -38,7 +38,7 @@
 | `lock`, `sleep`, `restart`, `shut down`, `sign out` | **System commands** (restart, shut down and sign out ask you to confirm) |
 | `empty recycle bin`, `toggle windows dark mode` | **More system commands** |
 | `emoji` | **Emoji picker** with search and recently used |
-| `clipboard` | **Clipboard history**: search and paste what you copied (opt-in, encrypted, password-aware) |
+| `clipboard` | **Clipboard history**: search and paste what you copied (opt-in, encrypted, never keeps passwords) |
 | `#7c3aed`, `rgb(…)`, `color` | **Color picker**: convert between HEX, RGB and HSL, or pick a color from anywhere on screen |
 
 ### Everything else
@@ -54,7 +54,7 @@ Type `clipboard` to search and paste what you copied recently (<kbd>Enter</kbd> 
 
 1. **Copies from password managers are never recorded**: Fyn honours the "don't record" flags that 1Password, Bitwarden, KeePass and others set (the same ones Windows' own clipboard history uses), and ignores copies made while those apps are in front. You can add your own apps in Settings.
 2. **Known secrets are never kept**: API keys and tokens (GitHub, OpenAI, Anthropic, AWS, Stripe, Slack, Google, npm, JWTs…), private keys, credentials in URLs, `PASSWORD=` lines and card numbers (Luhn-checked). Patterns follow the gitleaks rule set.
-3. **Password-like text is hidden**: shown masked, kept **encrypted in memory only** for a minute and then wiped, never written to disk, and (optionally) cleared from the clipboard after that minute. Reveal with <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>R</kbd>.
+3. **Password-like text is never kept**: anything that looks like a generated password is dropped the moment it's checked, never written to disk or held in memory. Optionally, Fyn also takes it off the clipboard after a minute (if you haven't copied something else since), remembering only that the clipboard changed, never what was on it.
 4. **Everything else is encrypted on disk** with your Windows account (DPAPI), and deleted after 1, 7 or 30 days (max 200 items).
 5. **Pause** for 15 minutes or until resumed, delete single items (<kbd>Ctrl</kbd>+<kbd>Backspace</kbd>) or **clear everything**; turning the feature off deletes it all.
 
