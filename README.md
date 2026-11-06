@@ -111,40 +111,9 @@ So both can run side by side, and nothing you do in dev touches your everyday fa
 
 In dev builds, press <kbd>Ctrl</kbd>+<kbd>Shift</kbd>+<kbd>D</kbd> (or click **DEV** in the footer) to jump straight to any screen or state: the welcome screen, settings, emoji and color pickers, a simulated "update available" notice, success and error toasts, resetting onboarding, and reloading the UI. The menu isn't included in release builds.
 
-### Releasing (with auto-update)
+### Releasing
 
-Releases are built and published by GitHub Actions (`.github/workflows/release.yml`). Installed copies of Fyn check `https://github.com/shanoysinc/fyn/releases/latest/download/latest.json` for updates, and each update is verified against the public key in `src-tauri/tauri.conf.json` (`plugins.updater.pubkey`) before it installs.
-
-**One-time setup:** add the private signing key as a repository secret (**Settings → Secrets and variables → Actions → New repository secret**):
-
-| Secret | Value |
-| --- | --- |
-| `TAURI_SIGNING_PRIVATE_KEY` | The full contents of `%USERPROFILE%\.tauri\fyn.key` |
-| `TAURI_SIGNING_PRIVATE_KEY_PASSWORD` | Only if the key has a password (the current one doesn't, so skip it) |
-
-Keep a backup of `fyn.key` somewhere safe. Without it, no future update can be signed and installed copies can never update again.
-
-**Each release** is one command, run on an up-to-date `main` with everything committed:
-
-```powershell
-bun run release patch    # 0.1.0 → 0.1.1  (fixes)
-bun run release minor    # 0.1.0 → 0.2.0  (new features)
-bun run release major    # 0.1.0 → 1.0.0
-bun run release 0.3.0    # an exact version
-bun run release patch --dry-run   # show what would happen, change nothing
-```
-
-`scripts/release.ts` checks you're on `main` with nothing uncommitted and in sync with GitHub, sets the version in `package.json`, `tauri.conf.json`, `Cargo.toml` and `Cargo.lock`, asks you to confirm, then commits, tags `vX.Y.Z` and pushes both. The tag starts the release workflow, which builds the signed installers and publishes a GitHub release with `latest.json`. Installed copies notice it about 15 seconds after they next start (or right away via **Settings → Updates → Check for Updates**).
-
-For the very first release, `bun run release 0.1.0` tags the current version as-is.
-
-To build signed installers locally instead:
-
-```powershell
-$env:TAURI_SIGNING_PRIVATE_KEY = "$HOME\.tauri\fyn.key"
-$env:TAURI_SIGNING_PRIVATE_KEY_PASSWORD = ""
-bun tauri build --config src-tauri/tauri.release.conf.json
-```
+Maintainers: see [docs/RELEASING.md](docs/RELEASING.md). In short, `bun run release patch` bumps the version, tags it and pushes, and GitHub Actions publishes a signed release that installed copies pick up automatically.
 
 ## Architecture
 
