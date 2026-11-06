@@ -165,3 +165,44 @@ unsafe fn write_png(hbm: HBITMAP, out: &Path) -> Result<(), String> {
     }
     std::fs::rename(&tmp, out).map_err(|e| e.to_string())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer::AppKind;
+
+    fn app(id: &str, stamp: u64) -> App {
+        App {
+            id: id.into(),
+            name: "A".into(),
+            kind: AppKind::Desktop,
+            launch: String::new(),
+            target: None,
+            icon: None,
+            stamp,
+        }
+    }
+
+    #[test]
+    fn icon_path_is_deterministic_and_changes_with_stamp() {
+        let dir = Path::new(r"C:\icons");
+        let p = icon_path(dir, &app("a", 1));
+        assert_eq!(p, icon_path(dir, &app("a", 1)));
+        assert_ne!(p, icon_path(dir, &app("a", 2)), "a changed shortcut gets a fresh icon");
+        assert_ne!(p, icon_path(dir, &app("b", 1)));
+        let file = p.file_name().unwrap().to_str().unwrap();
+        assert!(file.ends_with(".png") && file.len() == 16 + 4);
+    }
+
+    #[test]
+    fn attach_cached_only_sets_existing_icons() {
+        let dir = std::env::temp_dir().join(format!("fyn-icons-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let mut apps = vec![app("has", 1), app("missing", 1)];
+        std::fs::write(icon_path(&dir, &apps[0]), b"png").unwrap();
+        attach_cached(&dir, &mut apps);
+        assert!(apps[0].icon.is_some());
+        assert!(apps[1].icon.is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

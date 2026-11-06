@@ -96,3 +96,116 @@ pub fn search(
     hits.truncate(limit);
     hits
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer::AppKind;
+
+    const NOW: i64 = 1_700_000_000;
+    const DAY: i64 = 86_400;
+
+    fn app(name: &str) -> App {
+        App {
+            id: format!("id:{name}"),
+            name: name.into(),
+            kind: AppKind::Desktop,
+            launch: format!(r"C:\{name}.lnk"),
+            target: None,
+            icon: None,
+            stamp: 0,
+        }
+    }
+
+    fn run(apps: &[App], q: &str, usage: &HashMap<String, Usage>, pins: &HashSet<String>) -> Vec<String> {
+        let mut m = new_matcher();
+        search(apps, q, &mut m, usage, pins, NOW, 50)
+            .into_iter()
+            .map(|h| apps[h.index].name.clone())
+            .collect()
+    }
+
+    fn names(apps: &[App], q: &str) -> Vec<String> {
+        run(apps, q, &HashMap::new(), &HashSet::new())
+    }
+
+    #[test]
+    fn empty_or_blank_query_returns_nothing() {
+        let apps = vec![app("Chrome")];
+        assert!(names(&apps, "").is_empty());
+        assert!(names(&apps, "   ").is_empty());
+    }
+
+    #[test]
+    fn non_matching_apps_are_excluded() {
+        let apps = vec![app("Chrome"), app("Firefox")];
+        assert_eq!(names(&apps, "chr"), ["Chrome"]);
+        assert!(names(&apps, "zzz").is_empty());
+    }
+
+    #[test]
+    fn exact_beats_prefix_beats_word_prefix() {
+        let apps = vec![app("My Code Tool"), app("Code Insiders"), app("Code")];
+        assert_eq!(names(&apps, "code"), ["Code", "Code Insiders", "My Code Tool"]);
+    }
+
+    #[test]
+    fn matching_is_case_insensitive() {
+        let apps = vec![app("Visual Studio Code")];
+        assert_eq!(names(&apps, "VISUAL"), ["Visual Studio Code"]);
+    }
+
+    #[test]
+    fn fuzzy_initials_match() {
+        let apps = vec![app("Visual Studio Code"), app("Notepad")];
+        assert_eq!(names(&apps, "vsc"), ["Visual Studio Code"]);
+    }
+
+    #[test]
+    fn match_indices_point_at_the_hit_characters() {
+        let apps = vec![app("Chrome")];
+        let mut m = new_matcher();
+        let hits = search(&apps, "chr", &mut m, &HashMap::new(), &HashSet::new(), NOW, 10);
+        assert_eq!(hits[0].matches, vec![0, 1, 2]);
+    }
+
+    #[test]
+    fn frequently_used_app_ranks_higher() {
+        let apps = vec![app("Notepad"), app("Notepad++")];
+        assert_eq!(names(&apps, "note")[0], "Notepad"); // shorter name wins the tie
+        let usage = HashMap::from([("id:Notepad++".to_string(), Usage { count: 10, last_used: NOW })]);
+        assert_eq!(run(&apps, "note", &usage, &HashSet::new())[0], "Notepad++");
+    }
+
+    #[test]
+    fn pinned_app_gets_a_bonus() {
+        let apps = vec![app("Notepad"), app("Notepad++")];
+        let pins = HashSet::from(["id:Notepad++".to_string()]);
+        assert_eq!(run(&apps, "note", &HashMap::new(), &pins)[0], "Notepad++");
+    }
+
+    #[test]
+    fn ties_break_on_shorter_name() {
+        let apps = vec![app("Paint 3D"), app("Paint")];
+        assert_eq!(names(&apps, "pain")[0], "Paint");
+    }
+
+    #[test]
+    fn limit_truncates_results() {
+        let apps: Vec<App> = (0..20).map(|i| app(&format!("App {i}"))).collect();
+        let mut m = new_matcher();
+        let hits = search(&apps, "app", &mut m, &HashMap::new(), &HashSet::new(), NOW, 5);
+        assert_eq!(hits.len(), 5);
+    }
+
+    #[test]
+    fn frecency_decays_with_age() {
+        let u = |days: i64| Usage { count: 10, last_used: NOW - days * DAY };
+        assert_eq!(frecency(&u(0), NOW), 10.0);
+        assert_eq!(frecency(&u(3), NOW), 7.0);
+        assert_eq!(frecency(&u(10), NOW), 4.0);
+        assert_eq!(frecency(&u(100), NOW), 1.5);
+        // A timestamp in the future (clock change) counts as "just now", not negative.
+        assert_eq!(frecency(&Usage { count: 2, last_used: NOW + DAY }, NOW), 2.0);
+    }
+}

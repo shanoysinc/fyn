@@ -293,6 +293,73 @@ mod tests {
     }
 
     #[test]
+    fn parses_every_system_command() {
+        for id in ["lock", "sleep", "restart", "shutdown", "signout", "empty-recycle-bin", "toggle-dark-mode"] {
+            assert!(SystemCommand::parse(id).is_some(), "{id}");
+        }
+        for id in ["", "LOCK", "format-c", "shutdown "] {
+            assert!(SystemCommand::parse(id).is_none(), "{id:?}");
+        }
+    }
+
+    #[test]
+    fn only_session_commands_hide_the_window() {
+        let hides = |id| SystemCommand::parse(id).unwrap().hides_window();
+        for id in ["lock", "sleep", "restart", "shutdown", "signout"] {
+            assert!(hides(id), "{id}");
+        }
+        assert!(!hides("empty-recycle-bin"));
+        assert!(!hides("toggle-dark-mode"));
+    }
+
+    #[test]
+    fn settings_page_length_limit() {
+        let page = |n: usize| format!("ms-settings:{}", "a".repeat(n));
+        // Over the limit is rejected before anything is opened.
+        assert!(open_settings_page(&page(MAX_SETTINGS_PAGE_LEN + 1)).is_err());
+        assert!(open_settings_page("ms-settings:a b").is_err());
+        assert!(open_settings_page("ms-settings:a/b").is_err());
+    }
+
+    #[test]
+    fn url_length_and_scheme_limits() {
+        let long = format!("https://example.com/{}", "a".repeat(MAX_URL_LEN));
+        assert!(open_url(&long).is_err());
+        assert!(open_url("ftp://example.com").is_err());
+        assert!(open_url("https://example.com/\"x").is_err());
+        assert!(open_url("https://example.com/\tx").is_err());
+        assert!(open_url("").is_err());
+    }
+
+    #[test]
+    fn expand_handles_multiple_and_adjacent_vars() {
+        let home = std::env::var("USERPROFILE").unwrap();
+        let root = std::env::var("SystemRoot").unwrap();
+        assert_eq!(expand("%USERPROFILE%%SystemRoot%").unwrap(), format!("{home}{root}"));
+        assert_eq!(expand("~/x").unwrap(), format!("{home}/x"));
+        assert!(expand("%%").is_none(), "empty variable name");
+        assert!(expand("%USERPROFILE").is_none(), "unterminated");
+        assert_eq!(expand(r"C:\plain").unwrap(), r"C:\plain");
+    }
+
+    #[test]
+    fn check_path_reports_dirs_and_files() {
+        let dir = std::env::temp_dir().join(format!("fyn-path-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("a.txt");
+        std::fs::write(&file, b"x").unwrap();
+
+        let d = check_path(dir.to_str().unwrap()).unwrap();
+        assert!(d.is_dir);
+        let f = check_path(&format!("\"{}\"", file.display())).unwrap(); // quotes are stripped
+        assert!(!f.is_dir);
+        assert!(check_path("").is_none());
+        assert!(check_path(&"C:\\".repeat(MAX_PATH_LEN)).is_none());
+        assert!(open_path(r"C:\definitely\not\here\fyn", false).is_err());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn resolves_only_existing_absolute_paths() {
         assert!(resolve_path("~").is_some());
         assert!(resolve_path("relative\\path").is_none());

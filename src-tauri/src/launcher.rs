@@ -77,3 +77,29 @@ pub fn reveal_path(target: &str) -> Result<(), String> {
         .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn reveal_rejects_relative_and_quoted_paths() {
+        // Rejected before Explorer is ever started.
+        assert!(reveal_path(r"relative\path").is_err());
+        assert!(reveal_path(r#"C:\a" /evil"#).is_err());
+    }
+
+    #[test]
+    fn store_apps_cannot_run_as_admin() {
+        let app = App {
+            id: "aumid:x".into(),
+            name: "X".into(),
+            kind: AppKind::Store,
+            launch: r"shell:AppsFolder\X".into(),
+            target: None,
+            icon: None,
+            stamp: 0,
+        };
+        assert!(launch(&app, true).is_err());
+    }
+}

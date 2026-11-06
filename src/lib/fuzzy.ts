@@ -34,7 +34,8 @@ export function fuzzyMatch(query: string, title: string, keywords: readonly stri
   for (const k of keywords) {
     const kw = k.toLowerCase();
     if (kw === q) return { score: 72, matches: [] };
-    if (kw.startsWith(q)) return { score: 68, matches: [] };
+    // One letter is too little to promote a command by keyword ("v" -> "volume").
+    if (q.length >= 2 && kw.startsWith(q)) return { score: 68, matches: [] };
   }
   for (const k of keywords) {
     if (q.length >= 3 && k.toLowerCase().includes(q)) return { score: 50, matches: [] };

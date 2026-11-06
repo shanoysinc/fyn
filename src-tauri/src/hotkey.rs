@@ -1,7 +1,7 @@
 //! Global, user-configurable activation shortcut.
 
 use tauri::AppHandle;
-use tauri_plugin_global_shortcut::{GlobalShortcutExt, Shortcut};
+use tauri_plugin_global_shortcut::{GlobalShortcutExt, Modifiers, Shortcut};
 
 use crate::state::AppState;
 
@@ -21,8 +21,10 @@ fn parse(accel: &str) -> Result<Shortcut, String> {
         .rsplit('+')
         .next()
         .is_some_and(|k| k.len() >= 2 && k.starts_with('F') && k[1..].chars().all(|c| c.is_ascii_digit()));
-    if shortcut.mods.is_empty() && !is_function_key {
-        return Err("Shortcut needs a modifier (Ctrl, Alt, Shift or Win)".into());
+    // Shift on its own isn't enough either: Shift+A is just typing a capital A.
+    let typing_mods = shortcut.mods.is_empty() || shortcut.mods == Modifiers::SHIFT;
+    if typing_mods && !is_function_key {
+        return Err("Shortcut needs Ctrl, Alt or Win (Shift alone isn't enough)".into());
     }
     Ok(shortcut)
 }
@@ -76,5 +78,43 @@ pub fn suspend(app: &AppHandle, state: &AppState, suspended: bool) -> Result<(),
         Ok(())
     } else {
         gs.register(current).map_err(|e| e.to_string())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn accepts_shortcuts_with_a_real_modifier() {
+        assert!(parse(DEFAULT).is_ok());
+        assert!(parse("Ctrl+Shift+KeyK").is_ok());
+        assert!(parse("Alt+Space").is_ok());
+        assert!(parse("Super+KeyF").is_ok());
+    }
+
+    #[test]
+    fn function_keys_need_no_modifier() {
+        assert!(parse("F1").is_ok());
+        assert!(parse("F12").is_ok());
+        assert!(parse("Shift+F5").is_ok());
+    }
+
+    #[test]
+    fn rejects_shortcuts_that_would_swallow_typing() {
+        assert!(parse("KeyA").is_err());
+        assert!(parse("Space").is_err());
+        assert!(parse("Shift+KeyA").is_err());
+        assert!(parse("Shift+Digit1").is_err());
+    }
+
+    #[test]
+    fn rejects_empty_garbage_and_overlong_input() {
+        assert!(parse("").is_err());
+        assert!(parse("Ctrl+NotAKey").is_err());
+        assert!(parse("Ctrl+").is_err());
+        let long = format!("Ctrl+{}", "Shift+".repeat(20)) + "KeyA";
+        assert!(long.len() > MAX_LEN);
+        assert!(parse(&long).is_err());
     }
 }

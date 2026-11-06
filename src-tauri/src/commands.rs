@@ -207,10 +207,7 @@ pub fn get_settings(app: AppHandle, state: State<AppState>) -> Settings {
         let store = state.store.lock().unwrap();
         (
             store.get_setting(SETTING_ONBOARDED).as_deref() == Some("1"),
-            store
-                .get_setting(SETTING_SEARCH_ENGINE)
-                .filter(|e| SEARCH_ENGINES.contains(&e.as_str()))
-                .unwrap_or_else(|| SEARCH_ENGINES[0].to_string()),
+            saved_search_engine(&store),
             saved_theme(&store),
         )
     };
@@ -224,6 +221,14 @@ pub fn get_settings(app: AppHandle, state: State<AppState>) -> Settings {
         search_engine,
         theme,
     }
+}
+
+/// The saved web search engine ("google" if unset or unknown).
+fn saved_search_engine(store: &Store) -> String {
+    store
+        .get_setting(SETTING_SEARCH_ENGINE)
+        .filter(|e| SEARCH_ENGINES.contains(&e.as_str()))
+        .unwrap_or_else(|| SEARCH_ENGINES[0].to_string())
 }
 
 /// Fyn's saved appearance ("system" if unset or unknown).
@@ -350,4 +355,49 @@ pub async fn check_for_update(app: AppHandle) -> Result<Option<UpdateInfo>, Stri
 #[tauri::command]
 pub async fn install_update(app: AppHandle) -> Result<(), String> {
     updater::install(&app).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::path::Path;
+
+    fn store() -> Store {
+        Store::open(Path::new(":memory:")).unwrap()
+    }
+
+    #[test]
+    fn check_id_enforces_bounds() {
+        assert!(check_id("").is_err());
+        assert!(check_id(r"lnk:c:\a.lnk").is_ok());
+        assert!(check_id(&"x".repeat(MAX_ID_LEN)).is_ok());
+        assert!(check_id(&"x".repeat(MAX_ID_LEN + 1)).is_err());
+    }
+
+    #[test]
+    fn theme_defaults_to_system_and_ignores_unknown_values() {
+        let s = store();
+        assert_eq!(saved_theme(&s), "system");
+        s.set_setting(SETTING_THEME, "dark").unwrap();
+        assert_eq!(saved_theme(&s), "dark");
+        s.set_setting(SETTING_THEME, "purple").unwrap();
+        assert_eq!(saved_theme(&s), "system");
+    }
+
+    #[test]
+    fn search_engine_defaults_to_google_and_ignores_unknown_values() {
+        let s = store();
+        assert_eq!(saved_search_engine(&s), "google");
+        s.set_setting(SETTING_SEARCH_ENGINE, "duckduckgo").unwrap();
+        assert_eq!(saved_search_engine(&s), "duckduckgo");
+        s.set_setting(SETTING_SEARCH_ENGINE, "altavista").unwrap();
+        assert_eq!(saved_search_engine(&s), "google");
+    }
+
+    #[test]
+    fn allowlists_match_the_ui() {
+        // Keep in sync with SearchEngine / Theme in src/lib/ipc.ts.
+        assert_eq!(SEARCH_ENGINES, ["google", "duckduckgo", "bing"]);
+        assert_eq!(THEMES, ["system", "light", "dark"]);
+    }
 }

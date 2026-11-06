@@ -51,6 +51,8 @@ interface Toast {
   text: string;
   error?: boolean;
   ms?: number;
+  /** A "press ↵ again" prompt; cleared when the confirmation lapses. */
+  confirm?: boolean;
 }
 
 interface DevAction extends PanelAction {
@@ -245,7 +247,11 @@ export function App() {
   // A pending "press ↵ again" only applies to the item it was asked for, and expires.
   useEffect(() => setConfirming(null), [selected]);
   useEffect(() => {
-    if (!confirming) return;
+    if (!confirming) {
+      // Don't leave "Press ↵ again…" on screen once it no longer applies.
+      setToast((t) => (t?.confirm ? null : t));
+      return;
+    }
     const t = setTimeout(() => setConfirming(null), 4000);
     return () => clearTimeout(t);
   }, [confirming]);
@@ -314,7 +320,7 @@ export function App() {
         if (!action) return;
         if (entry.confirm && action === entry.primary && confirming !== entry.id) {
           setConfirming(entry.id);
-          showToast(`Press ↵ again to ${entry.confirm}`, false, 4000);
+          setToast({ text: `Press ↵ again to ${entry.confirm}`, ms: 4000, confirm: true });
           return;
         }
         setConfirming(null);
@@ -420,6 +426,12 @@ export function App() {
     if (action && current && (current.app || current.actions?.some((a) => a.id === action))) {
       e.preventDefault();
       void runEntry(current, action);
+      return;
+    }
+    // Ctrl(+Shift)+Enter on something without that action must not fall through to
+    // cmdk's plain-Enter handling (e.g. "run as admin" silently doing a normal open).
+    if (action && e.key === "Enter") {
+      e.preventDefault();
       return;
     }
     if (e.key === "Escape") {

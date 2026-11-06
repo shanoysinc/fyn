@@ -208,7 +208,9 @@ export function calculate(query: string): CalcResult | null {
   let src = query.trim();
   const forced = src.startsWith("=");
   if (forced) src = src.slice(1).trim();
-  if (!src || src.length > 200 || !/\d|pi|π|tau/i.test(src)) return null;
+  // Need a digit unless forced with "=": typing "pi" is far more likely the start of an
+  // app name (Pinta, Pinterest) than a request for π.
+  if (!src || src.length > 200 || (!forced && !/\d/.test(src))) return null;
 
   const tokens = tokenize(src);
   if (!tokens || tokens.length === 0) return null;

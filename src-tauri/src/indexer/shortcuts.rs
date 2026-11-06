@@ -98,10 +98,19 @@ fn extension(path: &Path) -> String {
 fn display_name(path: &Path) -> Option<String> {
     let name = path.file_stem()?.to_str()?.trim().to_string();
     let lower = name.to_lowercase();
-    if name.is_empty() || NOISE.iter().any(|n| lower.contains(n)) {
+    if name.is_empty() || NOISE.iter().any(|n| contains_word(&lower, n)) {
         return None;
     }
     Some(name)
+}
+
+/// Whether `phrase` appears in `text` as whole word(s), so "help" filters "Foo Help" but
+/// not "Helpdesk", and "support" doesn't hide "Dell SupportAssist".
+fn contains_word(text: &str, phrase: &str) -> bool {
+    let boundary = |c: Option<char>| !matches!(c, Some(c) if c.is_alphanumeric());
+    text.match_indices(phrase).any(|(i, _)| {
+        boundary(text[..i].chars().next_back()) && boundary(text[i + phrase.len()..].chars().next())
+    })
 }
 
 fn mtime(path: &Path) -> u64 {
@@ -193,4 +202,76 @@ fn resolve_lnk(path: &Path) -> Option<(String, String)> {
 fn from_wide(buf: &[u16]) -> String {
     let len = buf.iter().position(|&c| c == 0).unwrap_or(buf.len());
     String::from_utf16_lossy(&buf[..len])
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn name_of(file: &str) -> Option<String> {
+        display_name(Path::new(&format!(r"C:\Start Menu\{file}")))
+    }
+
+    #[test]
+    fn display_name_trims_and_keeps_real_apps() {
+        assert_eq!(name_of("Visual Studio Code.lnk").as_deref(), Some("Visual Studio Code"));
+        assert_eq!(name_of("  Spotify  .lnk").as_deref(), Some("Spotify"));
+    }
+
+    #[test]
+    fn display_name_drops_noise_shortcuts() {
+        for file in ["Uninstall Foo.lnk", "Foo Uninstaller.lnk", "README.lnk", "Read Me.lnk",
+            "Foo Help.lnk", "License.lnk", "Foo Website.lnk", "Release Notes.lnk", "   .lnk"] {
+            assert_eq!(name_of(file), None, "{file} should be filtered");
+        }
+    }
+
+    #[test]
+    fn noise_words_only_match_whole_words() {
+        // Real apps whose names merely contain a noise word.
+        for file in ["Dell SupportAssist.lnk", "Helpdesk Pro.lnk", "Licenses Manager.lnk"] {
+            assert!(name_of(file).is_some(), "{file} is a real app");
+        }
+    }
+
+    #[test]
+    fn extension_is_lowercased() {
+        assert_eq!(extension(Path::new(r"C:\a\Foo.LNK")), "lnk");
+        assert_eq!(extension(Path::new(r"C:\a\Foo")), "");
+    }
+
+    #[test]
+    fn from_wide_stops_at_nul() {
+        let mut buf = [0u16; 8];
+        for (i, c) in "abc".encode_utf16().enumerate() {
+            buf[i] = c;
+        }
+        assert_eq!(from_wide(&buf), "abc");
+        assert_eq!(from_wide(&"xyz".encode_utf16().collect::<Vec<_>>()), "xyz");
+    }
+
+    fn url_file(name: &str, body: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!("fyn-url-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join(name);
+        std::fs::write(&path, body).unwrap();
+        path
+    }
+
+    #[test]
+    fn url_shortcuts_keep_local_protocols_only() {
+        let game = url_file("Some Game.url", "[InternetShortcut]\r\nURL=steam://rungameid/123\r\n");
+        let app = from_url(&game).expect("steam:// link is kept");
+        assert_eq!(app.name, "Some Game");
+        assert_eq!(app.kind, AppKind::Link);
+        assert!(app.id.starts_with("url:"));
+
+        for (file, url) in [("Web.url", "https://example.com"), ("Http.url", "HTTP://example.com"),
+            ("File.url", "file:///C:/x.txt")] {
+            let p = url_file(file, &format!("[InternetShortcut]\nURL={url}\n"));
+            assert!(from_url(&p).is_none(), "{url} should be skipped");
+        }
+        let none = url_file("Empty.url", "[InternetShortcut]\n");
+        assert!(from_url(&none).is_none());
+    }
 }

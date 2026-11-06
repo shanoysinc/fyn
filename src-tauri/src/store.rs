@@ -124,3 +124,100 @@ impl Store {
         Ok(())
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn store() -> Store {
+        Store::open(Path::new(":memory:")).expect("in-memory db")
+    }
+
+    #[test]
+    fn toggle_pin_adds_then_removes() {
+        let s = store();
+        assert!(s.toggle_pin("a").unwrap());
+        assert_eq!(s.pins(), ["a"]);
+        assert!(!s.toggle_pin("a").unwrap());
+        assert!(s.pins().is_empty());
+    }
+
+    #[test]
+    fn pins_keep_insertion_order() {
+        let s = store();
+        for id in ["a", "b", "c"] {
+            s.toggle_pin(id).unwrap();
+        }
+        assert_eq!(s.pins(), ["a", "b", "c"]);
+        // Re-pinning after removal appends to the end.
+        s.toggle_pin("a").unwrap();
+        s.toggle_pin("a").unwrap();
+        assert_eq!(s.pins(), ["b", "c", "a"]);
+    }
+
+    #[test]
+    fn move_pin_reorders_and_clamps() {
+        let mut s = store();
+        for id in ["a", "b", "c"] {
+            s.toggle_pin(id).unwrap();
+        }
+        s.move_pin("c", -1).unwrap();
+        assert_eq!(s.pins(), ["a", "c", "b"]);
+        s.move_pin("a", -1).unwrap(); // already first
+        assert_eq!(s.pins(), ["a", "c", "b"]);
+        s.move_pin("b", 1).unwrap(); // already last
+        assert_eq!(s.pins(), ["a", "c", "b"]);
+        s.move_pin("a", 5).unwrap(); // clamped to the end
+        assert_eq!(s.pins(), ["c", "b", "a"]);
+        s.move_pin("missing", 1).unwrap(); // unknown id is a no-op
+        assert_eq!(s.pins(), ["c", "b", "a"]);
+    }
+
+    #[test]
+    fn move_pin_on_empty_list_is_a_no_op() {
+        let mut s = store();
+        s.move_pin("a", 1).unwrap();
+        assert!(s.pins().is_empty());
+    }
+
+    #[test]
+    fn record_launch_counts_and_timestamps() {
+        let s = store();
+        let before = now();
+        s.record_launch("a").unwrap();
+        s.record_launch("a").unwrap();
+        s.record_launch("b").unwrap();
+        let usage = s.usage();
+        assert_eq!(usage["a"].count, 2);
+        assert_eq!(usage["b"].count, 1);
+        assert!(usage["a"].last_used >= before);
+        assert!(!usage.contains_key("c"));
+    }
+
+    #[test]
+    fn settings_round_trip_and_overwrite() {
+        let s = store();
+        assert_eq!(s.get_setting("hotkey"), None);
+        s.set_setting("hotkey", "Ctrl+Space").unwrap();
+        assert_eq!(s.get_setting("hotkey").as_deref(), Some("Ctrl+Space"));
+        s.set_setting("hotkey", "Alt+Space").unwrap();
+        assert_eq!(s.get_setting("hotkey").as_deref(), Some("Alt+Space"));
+    }
+
+    #[test]
+    fn data_persists_across_reopen() {
+        let dir = std::env::temp_dir().join(format!("fyn-store-test-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("fyn.db");
+        {
+            let s = Store::open(&path).unwrap();
+            s.toggle_pin("a").unwrap();
+            s.set_setting("theme", "dark").unwrap();
+        }
+        let s = Store::open(&path).unwrap();
+        assert_eq!(s.pins(), ["a"]);
+        assert_eq!(s.get_setting("theme").as_deref(), Some("dark"));
+        drop(s);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}

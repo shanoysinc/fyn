@@ -254,9 +254,12 @@ export function webFallbacks(query: string, engine: SearchEngine): Entry[] {
 
 // ---------- URLs and paths ----------
 
+// Domains that are unambiguous as typed. Country codes that double as file extensions
+// (.rs, .sh, .so, .to, .it, .in, .me, .md…) are left out so `main.rs` isn't a "website";
+// those still work with www., a scheme or a path.
 const TLDS = new Set(
-  ("com org net io dev app co ai gov edu me us uk ca de fr jp au in nl se no es it ch tv gg " +
-    "xyz info biz sh so to ly fm rs cc tech site page cloud blog news shop store")
+  ("com org net io dev app co ai gov edu uk ca de fr jp au nl se no es ch " +
+    "xyz info biz tech site page cloud blog news shop store")
     .split(" "),
 );
 
@@ -267,8 +270,8 @@ export function asUrl(query: string): string | null {
   if (/^https?:\/\/[^\s/$.?#].\S*$/i.test(s)) return s;
   const m = /^(localhost|(?:[a-z0-9-]+\.)+([a-z]{2,}))(:\d{1,5})?([/?#]\S*)?$/i.exec(s);
   if (!m) return null;
-  if (m[1].toLowerCase() === "localhost") return m[3] ? `http://${s}` : null;
-  if (!TLDS.has(m[2].toLowerCase()) && !/^www\./i.test(s)) return null;
+  if (m[1].toLowerCase() === "localhost") return m[3] || m[4] ? `http://${s}` : null;
+  if (!TLDS.has(m[2].toLowerCase()) && !/^www\./i.test(s) && !m[4]?.startsWith("/")) return null;
   return `https://${s}`;
 }
 

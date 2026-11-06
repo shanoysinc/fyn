@@ -21,3 +21,47 @@ pub fn save(dir: &Path, apps: &[App]) {
         let _ = std::fs::rename(&tmp, dir.join(FILE));
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::indexer::AppKind;
+
+    fn temp_dir(tag: &str) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("fyn-cache-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn save_then_load_round_trips() {
+        let dir = temp_dir("roundtrip");
+        let apps = vec![App {
+            id: r"lnk:c:\a.lnk".into(),
+            name: "A".into(),
+            kind: AppKind::Desktop,
+            launch: r"C:\a.lnk".into(),
+            target: Some(r"C:\a.exe".into()),
+            icon: None,
+            stamp: 42,
+        }];
+        save(&dir, &apps);
+        let loaded = load(&dir);
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded[0].id, apps[0].id);
+        assert_eq!(loaded[0].target, apps[0].target);
+        assert_eq!(loaded[0].stamp, 42);
+        assert!(!dir.join("apps.json.tmp").exists(), "temp file is renamed away");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn missing_or_corrupt_cache_loads_empty() {
+        let dir = temp_dir("corrupt");
+        assert!(load(&dir).is_empty());
+        std::fs::write(dir.join("apps.json"), b"{not json").unwrap();
+        assert!(load(&dir).is_empty());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+}
