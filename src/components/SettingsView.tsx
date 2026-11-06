@@ -15,6 +15,7 @@ import {
   type UpdateInfo,
 } from "../lib/ipc";
 import { fromEvent, toKeys } from "../lib/hotkey";
+import { formatBytes } from "../lib/format";
 import { Kbd } from "./Kbd";
 import { BackButton } from "./ViewHeader";
 
@@ -405,6 +406,27 @@ function ClipboardSettings({ onError }: { onError: (message: string | null) => v
               ]}
               onChange={(v) => void save({ retentionDays: Number(v) as ClipSettings["retentionDays"] })}
             />
+          </section>
+
+          <section className="setting">
+            <div>
+              <div className="setting__title">Include images</div>
+              <div className="setting__desc">
+                Screenshots and copied pictures, up to 50, encrypted. Fyn can't read what's inside an
+                image, so a screenshot of a password would be kept.
+                {status.includeImages &&
+                  ` ${status.imageCount} saved (${formatBytes(status.imageBytes)}). Turning this off deletes them.`}
+              </div>
+            </div>
+            <button
+              role="switch"
+              aria-checked={status.includeImages}
+              aria-label="Include images"
+              className={`switch ${status.includeImages ? "switch--on" : ""}`}
+              onClick={() => void save({ includeImages: !status.includeImages })}
+            >
+              <span className="switch__thumb" />
+            </button>
           </section>
 
           <section className="setting">

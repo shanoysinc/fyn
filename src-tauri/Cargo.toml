@@ -21,6 +21,7 @@ rusqlite = { version = "0.32", features = ["bundled"] }
 nucleo-matcher = "0.3"
 walkdir = "2"
 png = "0.17"
+base64 = "0.21"
 notify = "8"
 regex = "1"
 zeroize = "1"

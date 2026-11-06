@@ -40,8 +40,9 @@ impl Store {
                  key   TEXT PRIMARY KEY,
                  value TEXT NOT NULL
              );
-             -- Clipboard history. `data` is DPAPI-encrypted text (see clipboard::crypto);
-             -- nothing readable is stored. Password-like items never get here.
+             -- Clipboard history. `data` is DPAPI-encrypted (see clipboard::crypto): the
+             -- text, or for an image a small thumbnail (the image itself is an encrypted
+             -- file). Nothing readable is stored. Password-like text never gets here.
              CREATE TABLE IF NOT EXISTS clipboard (
                  id      INTEGER PRIMARY KEY AUTOINCREMENT,
                  created INTEGER NOT NULL,
@@ -49,6 +50,19 @@ impl Store {
                  data    BLOB NOT NULL
              );",
         )?;
+        // Image support (added later): add the columns to databases created before it.
+        let has_kind = conn
+            .prepare("SELECT 1 FROM pragma_table_info('clipboard') WHERE name = 'kind'")?
+            .exists([])?;
+        if !has_kind {
+            conn.execute_batch(
+                "ALTER TABLE clipboard ADD COLUMN kind TEXT NOT NULL DEFAULT 'text';
+                 ALTER TABLE clipboard ADD COLUMN width INTEGER;
+                 ALTER TABLE clipboard ADD COLUMN height INTEGER;
+                 ALTER TABLE clipboard ADD COLUMN bytes INTEGER;
+                 ALTER TABLE clipboard ADD COLUMN hash INTEGER;",
+            )?;
+        }
         Ok(Self { conn })
     }
 
@@ -134,25 +148,52 @@ impl Store {
 
     // ---------- clipboard history (encrypted blobs only) ----------
 
-    pub fn clip_insert(&self, created: i64, source: Option<&str>, data: &[u8]) -> rusqlite::Result<i64> {
+    /// Insert a row (its `id` is ignored); returns the new id.
+    pub fn clip_insert(&self, row: &ClipRow) -> rusqlite::Result<i64> {
         self.conn.execute(
-            "INSERT INTO clipboard (created, source, data) VALUES (?1, ?2, ?3)",
-            params![created, source, data],
+            "INSERT INTO clipboard (created, source, data, kind, width, height, bytes, hash)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+            params![
+                row.created,
+                row.source,
+                row.data,
+                if row.image.is_some() { "image" } else { "text" },
+                row.image.map(|i| i.width),
+                row.image.map(|i| i.height),
+                row.image.map(|i| i.bytes as i64),
+                row.image.map(|i| i.hash as i64),
+            ],
         )?;
         Ok(self.conn.last_insert_rowid())
     }
 
-    /// All items, newest first: (id, created, source, encrypted data).
-    pub fn clip_all(&self) -> Vec<(i64, i64, Option<String>, Vec<u8>)> {
-        let Ok(mut stmt) = self
-            .conn
-            .prepare_cached("SELECT id, created, source, data FROM clipboard ORDER BY created DESC, id DESC")
-        else {
+    /// All items, newest first.
+    pub fn clip_all(&self) -> Vec<ClipRow> {
+        let Ok(mut stmt) = self.conn.prepare_cached(
+            "SELECT id, created, source, data, kind, width, height, bytes, hash
+             FROM clipboard ORDER BY created DESC, id DESC",
+        ) else {
             return Vec::new();
         };
-        stmt.query_map([], |r| Ok((r.get(0)?, r.get(1)?, r.get(2)?, r.get(3)?)))
-            .map(|rows| rows.filter_map(Result::ok).collect())
-            .unwrap_or_default()
+        stmt.query_map([], |r| {
+            let image = (r.get::<_, String>(4)? == "image").then(|| -> rusqlite::Result<ImageMeta> {
+                Ok(ImageMeta {
+                    width: r.get(5)?,
+                    height: r.get(6)?,
+                    bytes: r.get::<_, i64>(7)? as u64,
+                    hash: r.get::<_, i64>(8)? as u64,
+                })
+            });
+            Ok(ClipRow {
+                id: r.get(0)?,
+                created: r.get(1)?,
+                source: r.get(2)?,
+                data: r.get(3)?,
+                image: image.transpose()?,
+            })
+        })
+        .map(|rows| rows.filter_map(Result::ok).collect())
+        .unwrap_or_default()
     }
 
     pub fn clip_delete(&self, id: i64) -> rusqlite::Result<()> {
@@ -167,17 +208,45 @@ impl Store {
         Ok(())
     }
 
-    /// Drop items older than `cutoff` and anything beyond the newest `keep`.
-    /// Returns how many were removed.
-    pub fn clip_prune(&self, cutoff: i64, keep: usize) -> rusqlite::Result<usize> {
-        let old = self.conn.execute("DELETE FROM clipboard WHERE created < ?1", [cutoff])?;
-        let extra = self.conn.execute(
-            "DELETE FROM clipboard WHERE id NOT IN
-               (SELECT id FROM clipboard ORDER BY created DESC, id DESC LIMIT ?1)",
-            [keep as i64],
-        )?;
-        Ok(old + extra)
+    /// Delete items older than `cutoff`, beyond the newest `keep`, or images beyond the
+    /// newest `keep_images`. Returns the ids removed (so image files can be deleted too).
+    pub fn clip_prune(&self, cutoff: i64, keep: usize, keep_images: usize) -> rusqlite::Result<Vec<i64>> {
+        let ids: Vec<i64> = {
+            let mut stmt = self.conn.prepare(
+                "SELECT id FROM clipboard WHERE created < ?1
+                 OR id NOT IN (SELECT id FROM clipboard ORDER BY created DESC, id DESC LIMIT ?2)
+                 OR (kind = 'image' AND id NOT IN
+                     (SELECT id FROM clipboard WHERE kind = 'image' ORDER BY created DESC, id DESC LIMIT ?3))",
+            )?;
+            let rows = stmt.query_map(params![cutoff, keep as i64, keep_images as i64], |r| r.get(0))?;
+            rows.collect::<rusqlite::Result<_>>()?
+        };
+        for id in &ids {
+            self.conn.execute("DELETE FROM clipboard WHERE id = ?1", [id])?;
+        }
+        Ok(ids)
     }
+}
+
+/// Size and fingerprint of a clipboard image.
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct ImageMeta {
+    pub width: u32,
+    pub height: u32,
+    /// Size of the encoded PNG.
+    pub bytes: u64,
+    /// Fingerprint of the PNG, to spot the same image copied again.
+    pub hash: u64,
+}
+
+/// A stored clipboard item: encrypted `data` (text, or an image's thumbnail).
+#[derive(Clone, Debug, PartialEq)]
+pub struct ClipRow {
+    pub id: i64,
+    pub created: i64,
+    pub source: Option<String>,
+    pub data: Vec<u8>,
+    pub image: Option<ImageMeta>,
 }
 
 #[cfg(test)]
@@ -188,15 +257,27 @@ mod tests {
         Store::open(Path::new(":memory:")).expect("in-memory db")
     }
 
+    fn text_row(created: i64, source: Option<&str>, data: &[u8]) -> ClipRow {
+        ClipRow { id: 0, created, source: source.map(str::to_string), data: data.to_vec(), image: None }
+    }
+
+    fn image_row(created: i64) -> ClipRow {
+        ClipRow {
+            image: Some(ImageMeta { width: 1920, height: 1080, bytes: 123_456, hash: u64::MAX - 7 }),
+            ..text_row(created, Some("snippingtool.exe"), b"thumb")
+        }
+    }
+
     #[test]
     fn clipboard_rows_insert_list_delete() {
         let s = store();
-        let a = s.clip_insert(100, Some("code.exe"), b"enc-a").unwrap();
-        let b = s.clip_insert(200, None, b"enc-b").unwrap();
+        let a = s.clip_insert(&text_row(100, Some("code.exe"), b"enc-a")).unwrap();
+        let b = s.clip_insert(&text_row(200, None, b"enc-b")).unwrap();
         let all = s.clip_all();
-        assert_eq!(all.iter().map(|r| r.0).collect::<Vec<_>>(), vec![b, a]); // newest first
-        assert_eq!(all[1].2.as_deref(), Some("code.exe"));
-        assert_eq!(all[0].3, b"enc-b");
+        assert_eq!(all.iter().map(|r| r.id).collect::<Vec<_>>(), vec![b, a]); // newest first
+        assert_eq!(all[1].source.as_deref(), Some("code.exe"));
+        assert_eq!(all[0].data, b"enc-b");
+        assert_eq!(all[0].image, None);
         s.clip_delete(a).unwrap();
         assert_eq!(s.clip_all().len(), 1);
         s.clip_delete_all().unwrap();
@@ -204,15 +285,54 @@ mod tests {
     }
 
     #[test]
-    fn clipboard_prune_by_age_and_count() {
+    fn clipboard_images_keep_their_size_and_fingerprint() {
+        let s = store();
+        let id = s.clip_insert(&image_row(100)).unwrap();
+        let row = &s.clip_all()[0];
+        assert_eq!(row.id, id);
+        assert_eq!(row.image, image_row(100).image); // incl. a hash above i64::MAX
+    }
+
+    #[test]
+    fn clipboard_prune_by_age_count_and_image_count() {
         let s = store();
         for t in 1..=10 {
-            s.clip_insert(t * 100, None, b"x").unwrap();
+            s.clip_insert(&text_row(t * 100, None, b"x")).unwrap();
         }
         // Older than 300 goes (100, 200), then only the newest 5 stay.
-        assert_eq!(s.clip_prune(300, 5).unwrap(), 5);
-        let created: Vec<i64> = s.clip_all().iter().map(|r| r.1).collect();
+        assert_eq!(s.clip_prune(300, 5, 50).unwrap().len(), 5);
+        let created: Vec<i64> = s.clip_all().iter().map(|r| r.created).collect();
         assert_eq!(created, vec![1000, 900, 800, 700, 600]);
+
+        // Images have their own, smaller cap.
+        let first = s.clip_insert(&image_row(1100)).unwrap();
+        s.clip_insert(&image_row(1200)).unwrap();
+        assert_eq!(s.clip_prune(0, 200, 1).unwrap(), vec![first]);
+        assert_eq!(s.clip_all().iter().filter(|r| r.image.is_some()).count(), 1);
+    }
+
+    #[test]
+    fn old_databases_gain_the_image_columns() {
+        let dir = std::env::temp_dir().join(format!("fyn-store-migrate-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("old.db");
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE clipboard (id INTEGER PRIMARY KEY AUTOINCREMENT, created INTEGER NOT NULL,
+                                         source TEXT, data BLOB NOT NULL);
+                 INSERT INTO clipboard (created, source, data) VALUES (5, NULL, x'01');",
+            )
+            .unwrap();
+        }
+        let s = Store::open(&path).unwrap();
+        let rows = s.clip_all();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].image, None); // existing rows become text
+        drop(s);
+        Store::open(&path).unwrap(); // and opening again doesn't try to migrate twice
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

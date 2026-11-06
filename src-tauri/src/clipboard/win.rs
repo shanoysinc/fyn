@@ -21,7 +21,13 @@ use windows::Win32::UI::Input::KeyboardAndMouse::{
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 use zeroize::{Zeroize, Zeroizing};
 
+use super::image::{decode_png, dib_to_rgba, rgba_to_dib, Rgba, MAX_PIXELS, MAX_PNG_BYTES};
+
 const UNICODE_TEXT: u32 = CF_UNICODETEXT.0 as u32;
+const CF_DIB: u32 = 8;
+const CF_DIBV5: u32 = 17;
+/// A DIB of MAX_PIXELS at 32 bits per pixel, plus headers.
+const MAX_DIB_BYTES: usize = (MAX_PIXELS as usize) * 4 + 4096;
 
 /// Sequence number after Fyn's own last write, so the monitor doesn't record it again.
 static OWN_SEQUENCE: AtomicU32 = AtomicU32::new(0);
@@ -63,13 +69,18 @@ fn format(name: PCWSTR) -> u32 {
 /// What's on the clipboard right now, if clipboard history may look at it.
 pub enum Read {
     Text(Zeroizing<String>),
+    /// An image (only read when images are wanted). `png` is the copying app's own PNG
+    /// when it provided one (better quality, smaller); otherwise Fyn encodes `image`.
+    Image { image: Rgba, png: Option<Vec<u8>> },
     /// The copying app asked monitors not to record this (password managers do).
     Excluded,
-    /// No text (an image, files, …).
-    NotText,
+    /// Nothing usable (files, an unsupported format, an image when images are off, …).
+    Nothing,
 }
 
-pub fn read(owner: HWND) -> Result<Read, String> {
+/// Read the clipboard. Text wins when both text and an image are on it (apps like Word
+/// put a picture of the text alongside it). Images are only read if `images` is true.
+pub fn read(owner: HWND, images: bool) -> Result<Read, String> {
     let _open = Opened::open(Some(owner))?;
     unsafe {
         // Signals set by password managers and other privacy-aware apps; Windows'
@@ -88,12 +99,66 @@ pub fn read(owner: HWND) -> Result<Read, String> {
             }
         }
 
-        if IsClipboardFormatAvailable(UNICODE_TEXT).is_err() {
-            return Ok(Read::NotText);
+        let text = if IsClipboardFormatAvailable(UNICODE_TEXT).is_ok() {
+            GetClipboardData(UNICODE_TEXT).ok().and_then(|h| read_wide(h))
+        } else {
+            None
+        };
+        // Text wins (Word and Excel put a picture of the text alongside it), except when
+        // it's empty or just a link: browsers' "Copy image" can add the image's address.
+        let text_is_the_point = text.as_ref().is_some_and(|t| !text_is_incidental(t));
+        if !images || text_is_the_point {
+            return Ok(text.map(Read::Text).unwrap_or(Read::Nothing));
         }
-        let handle = GetClipboardData(UNICODE_TEXT).map_err(|e| e.to_string())?;
-        Ok(read_wide(handle).map(Read::Text).unwrap_or(Read::NotText))
+        if let Some(image) = read_image() {
+            return Ok(image);
+        }
+        Ok(text.map(Read::Text).unwrap_or(Read::Nothing))
     }
+}
+
+/// Text that comes along with an image rather than being what was copied: empty, or a
+/// single link (an image's web address).
+fn text_is_incidental(text: &str) -> bool {
+    let t = text.trim();
+    t.is_empty() || (!t.contains(char::is_whitespace) && (t.starts_with("http://") || t.starts_with("https://") || t.starts_with("data:image/")))
+}
+
+/// The image on the (already open) clipboard: the app's own PNG if it gave one (keeps
+/// transparency), otherwise a bitmap format.
+unsafe fn read_image() -> Option<Read> {
+    let png_format = format(w!("PNG"));
+    if IsClipboardFormatAvailable(png_format).is_ok() {
+        let png = GetClipboardData(png_format).ok().and_then(|h| read_bytes(h, MAX_PNG_BYTES));
+        if let Some(image) = png.as_deref().and_then(decode_png) {
+            return Some(Read::Image { image, png });
+        }
+    }
+    for dib_format in [CF_DIBV5, CF_DIB] {
+        if IsClipboardFormatAvailable(dib_format).is_ok() {
+            let dib = GetClipboardData(dib_format).ok().and_then(|h| read_bytes(h, MAX_DIB_BYTES));
+            if let Some(image) = dib.as_deref().and_then(dib_to_rgba) {
+                return Some(Read::Image { image, png: None });
+            }
+        }
+    }
+    None
+}
+
+/// Copy a clipboard memory block, refusing ones larger than `max` bytes.
+unsafe fn read_bytes(handle: HANDLE, max: usize) -> Option<Vec<u8>> {
+    let mem = HGLOBAL(handle.0);
+    let size = GlobalSize(mem);
+    if size == 0 || size > max {
+        return None;
+    }
+    let ptr = GlobalLock(mem) as *const u8;
+    if ptr.is_null() {
+        return None;
+    }
+    let bytes = std::slice::from_raw_parts(ptr, size).to_vec();
+    let _ = GlobalUnlock(mem);
+    Some(bytes)
 }
 
 unsafe fn read_dword(handle: HANDLE) -> Option<u32> {
@@ -122,6 +187,20 @@ unsafe fn read_wide(handle: HANDLE) -> Option<Zeroizing<String>> {
     let text = Zeroizing::new(String::from_utf16_lossy(&units[..len]));
     let _ = GlobalUnlock(mem);
     Some(text)
+}
+
+/// Put an image on the clipboard as PNG (browsers, chat apps) and as a bitmap (Paint,
+/// Office, everything else).
+pub fn write_image(png: &[u8], image: &Rgba) -> Result<(), String> {
+    let _open = Opened::open(None)?;
+    unsafe {
+        EmptyClipboard().map_err(|e| e.to_string())?;
+        set_bytes(format(w!("PNG")), png)?;
+        set_bytes(CF_DIB, &rgba_to_dib(image))?;
+    }
+    drop(_open);
+    OWN_SEQUENCE.store(sequence(), Ordering::SeqCst);
+    Ok(())
 }
 
 /// Put `text` on the clipboard (pasting a history item back).
@@ -204,5 +283,50 @@ pub fn send_paste() {
     let inputs = [key(VK_CONTROL, false), key(VK_V, false), key(VK_V, true), key(VK_CONTROL, true)];
     unsafe {
         SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use windows::Win32::System::DataExchange::{EnumClipboardFormats, GetClipboardFormatNameW};
+
+    #[test]
+    fn text_alongside_an_image_only_wins_when_it_is_real_text() {
+        for incidental in ["", "   \n", "https://example.com/cat.png", "http://x.y/a?b=c", "data:image/png;base64,AAAA"] {
+            assert!(text_is_incidental(incidental), "{incidental:?}");
+        }
+        for real in ["Quarterly results", "see https://example.com", "A1\tB1", "example.com"] {
+            assert!(!text_is_incidental(real), "{real:?}");
+        }
+    }
+
+    /// Diagnostic: what's on the clipboard right now, and what clipboard history reads.
+    /// Run with: cargo test read_current_clipboard -- --ignored --nocapture
+    #[test]
+    #[ignore]
+    fn read_current_clipboard() {
+        {
+            let _open = Opened::open(None).unwrap();
+            let mut fmt = 0;
+            loop {
+                fmt = unsafe { EnumClipboardFormats(fmt) };
+                if fmt == 0 {
+                    break;
+                }
+                let mut name = [0u16; 128];
+                let len = unsafe { GetClipboardFormatNameW(fmt, &mut name) };
+                println!("format {fmt}: {}", String::from_utf16_lossy(&name[..len.max(0) as usize]));
+            }
+        }
+        match read(HWND::default(), true) {
+            Ok(Read::Text(t)) => println!("=> text ({} chars)", t.chars().count()),
+            Ok(Read::Image { image, png }) => {
+                println!("=> image {}x{} (app PNG: {})", image.width, image.height, png.is_some())
+            }
+            Ok(Read::Excluded) => println!("=> excluded"),
+            Ok(Read::Nothing) => println!("=> nothing"),
+            Err(e) => println!("=> error {e}"),
+        }
     }
 }

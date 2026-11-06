@@ -28,7 +28,12 @@ unsafe fn take(out: CRYPT_INTEGER_BLOB) -> Vec<u8> {
 
 /// Encrypt for storage, tied to the current Windows user.
 pub fn protect(plain: &str) -> Result<Vec<u8>, String> {
-    let input = blob(plain.as_bytes());
+    protect_bytes(plain.as_bytes())
+}
+
+/// Encrypt raw bytes (an image) for storage, tied to the current Windows user.
+pub fn protect_bytes(plain: &[u8]) -> Result<Vec<u8>, String> {
+    let input = blob(plain);
     let entropy = blob(ENTROPY);
     let mut out = CRYPT_INTEGER_BLOB::default();
     unsafe {
@@ -38,17 +43,22 @@ pub fn protect(plain: &str) -> Result<Vec<u8>, String> {
     }
 }
 
-/// Decrypt something [`protect`] produced. Fails for another user's data or tampering.
+/// Decrypt text [`protect`] produced. Fails for another user's data or tampering.
 pub fn unprotect(cipher: &[u8]) -> Result<Zeroizing<String>, String> {
+    let bytes = unprotect_bytes(cipher)?;
+    String::from_utf8(bytes.to_vec()).map(Zeroizing::new).map_err(|_| "Corrupt clipboard item".into())
+}
+
+/// Decrypt bytes [`protect_bytes`] produced.
+pub fn unprotect_bytes(cipher: &[u8]) -> Result<Zeroizing<Vec<u8>>, String> {
     let input = blob(cipher);
     let entropy = blob(ENTROPY);
     let mut out = CRYPT_INTEGER_BLOB::default();
-    let bytes = unsafe {
+    unsafe {
         CryptUnprotectData(&input, None, Some(&entropy), None, None, CRYPTPROTECT_UI_FORBIDDEN, &mut out)
             .map_err(|e| format!("Couldn't decrypt clipboard item: {e}"))?;
-        Zeroizing::new(take(out))
-    };
-    String::from_utf8(bytes.to_vec()).map(Zeroizing::new).map_err(|_| "Corrupt clipboard item".into())
+        Ok(Zeroizing::new(take(out)))
+    }
 }
 
 #[cfg(test)]

@@ -38,7 +38,7 @@
 | `lock`, `sleep`, `restart`, `shut down`, `sign out` | **System commands** (restart, shut down and sign out ask you to confirm) |
 | `empty recycle bin`, `toggle windows dark mode` | **More system commands** |
 | `emoji` | **Emoji picker** with search and recently used |
-| `clipboard` | **Clipboard history**: search and paste what you copied (opt-in, encrypted, never keeps passwords) |
+| `clipboard` | **Clipboard history**: search and paste text (and optionally images) you copied; opt-in, encrypted, never keeps passwords |
 | `#7c3aed`, `rgb(…)`, `color` | **Color picker**: convert between HEX, RGB and HSL, or pick a color from anywhere on screen |
 
 ### Everything else
@@ -56,7 +56,8 @@ Type `clipboard` to search and paste what you copied recently (<kbd>Enter</kbd> 
 2. **Known secrets are never kept**: API keys and tokens (GitHub, OpenAI, Anthropic, AWS, Stripe, Slack, Google, npm, JWTs…), private keys, credentials in URLs, `PASSWORD=` lines and card numbers (Luhn-checked). Patterns follow the gitleaks rule set.
 3. **Password-like text is never kept**: anything that looks like a generated password is dropped the moment it's checked, never written to disk or held in memory. Optionally, Fyn also takes it off the clipboard after a minute (if you haven't copied something else since), remembering only that the clipboard changed, never what was on it.
 4. **Everything else is encrypted on disk** with your Windows account (DPAPI), and deleted after 1, 7 or 30 days (max 200 items).
-5. **Pause** for 15 minutes or until resumed, delete single items (<kbd>Ctrl</kbd>+<kbd>Backspace</kbd>) or **clear everything**; turning the feature off deletes it all.
+5. **Images are opt-in** (Settings → Include images): screenshots and copied pictures, up to 50, each stored as an encrypted file with an encrypted thumbnail. Fyn can't read what's inside a picture, so a screenshot of a password *would* be kept; that's why it's off by default. Turning it off deletes the saved images.
+6. **Pause** for 15 minutes or until resumed, delete single items (<kbd>Ctrl</kbd>+<kbd>Backspace</kbd>) or **clear everything**; turning the feature off deletes it all.
 
 No tool can recognise a human-chosen password like `Summer2024!` (it looks like ordinary text); that's what the short retention, Pause and delete are for.
 

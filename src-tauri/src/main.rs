@@ -103,6 +103,7 @@ fn main() {
             clipboard::clipboard_status,
             clipboard::set_clipboard_settings,
             clipboard::clipboard_list,
+            clipboard::clipboard_image,
             clipboard::clipboard_copy,
             clipboard::clipboard_paste,
             clipboard::clipboard_delete,

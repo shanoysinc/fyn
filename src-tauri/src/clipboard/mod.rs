@@ -6,14 +6,18 @@
 //! 3. Known secret formats, card numbers and anything that looks like a password are
 //!    never kept: not on disk, not in memory ([`classify`]). Optionally, a password-like
 //!    copy is also cleared from the clipboard after a minute.
-//! 4. Everything else is stored DPAPI-encrypted, pruned by age and count.
+//! 4. Everything else is stored DPAPI-encrypted, pruned by age and count. Images are
+//!    opt-in (text checks can't see inside a picture), capped at 50, and stored as
+//!    encrypted files with an encrypted thumbnail in the database.
 //!
 //! Off until the user turns it on; turning it off deletes everything.
 
 pub mod classify;
 pub mod crypto;
+pub mod image;
 mod win;
 
+use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicIsize, Ordering};
 use std::sync::{Mutex, OnceLock};
 use std::time::{Duration, Instant};
@@ -31,8 +35,9 @@ use windows::Win32::UI::WindowsAndMessaging::{
 use zeroize::Zeroizing;
 
 use self::classify::Class;
+use self::image::Rgba;
 use crate::state::AppState;
-use crate::store::{now, Store};
+use crate::store::{now, ClipRow, ImageMeta, Store};
 use crate::window;
 
 pub const EVT_CHANGED: &str = "fyn://clipboard-changed";
@@ -40,6 +45,7 @@ pub const EVT_CHANGED: &str = "fyn://clipboard-changed";
 /// How long a password-like copy may stay on the clipboard (if that option is on).
 const CLEAR_AFTER: Duration = Duration::from_secs(60);
 const MAX_ITEMS: usize = 200;
+const MAX_IMAGES: usize = 50;
 /// Longest text sent to the UI for one item (the full text is still pasted).
 const MAX_UI_CHARS: usize = 20_000;
 /// Wait for the previous app to get focus back before pressing Ctrl+V in it.
@@ -48,6 +54,7 @@ const PASTE_DELAY: Duration = Duration::from_millis(150);
 const KEY_ENABLED: &str = "clipboard_enabled";
 const KEY_RETENTION: &str = "clipboard_retention_days";
 const KEY_CLEAR: &str = "clipboard_clear_sensitive";
+const KEY_IMAGES: &str = "clipboard_include_images";
 const KEY_IGNORED: &str = "clipboard_ignored_apps";
 
 const RETENTIONS: [u32; 3] = [1, 7, 30];
@@ -76,6 +83,8 @@ pub struct ClipSettings {
     /// Clear the system clipboard a minute after a password-like copy (unless something
     /// else was copied since). The password itself is never stored either way.
     pub clear_sensitive: bool,
+    /// Keep copied images too (off by default: text checks can't see inside a picture).
+    pub include_images: bool,
     pub ignored_apps: Vec<String>,
 }
 
@@ -85,6 +94,7 @@ impl Default for ClipSettings {
             enabled: false,
             retention_days: 7,
             clear_sensitive: true,
+            include_images: false,
             ignored_apps: DEFAULT_IGNORED.iter().map(|s| s.to_string()).collect(),
         }
     }
@@ -93,14 +103,16 @@ impl Default for ClipSettings {
 impl ClipSettings {
     fn load(store: &Store) -> Self {
         let d = Self::default();
+        let flag = |key: &str, default: bool| store.get_setting(key).map_or(default, |v| v == "1");
         Self {
-            enabled: store.get_setting(KEY_ENABLED).as_deref() == Some("1"),
+            enabled: flag(KEY_ENABLED, d.enabled),
             retention_days: store
                 .get_setting(KEY_RETENTION)
                 .and_then(|v| v.parse().ok())
                 .filter(|v| RETENTIONS.contains(v))
                 .unwrap_or(d.retention_days),
-            clear_sensitive: store.get_setting(KEY_CLEAR).map_or(d.clear_sensitive, |v| v == "1"),
+            clear_sensitive: flag(KEY_CLEAR, d.clear_sensitive),
+            include_images: flag(KEY_IMAGES, d.include_images),
             ignored_apps: store
                 .get_setting(KEY_IGNORED)
                 .map(|v| v.lines().filter(|l| !l.is_empty()).map(str::to_string).collect())
@@ -109,9 +121,11 @@ impl ClipSettings {
     }
 
     fn save(&self, store: &Store) -> rusqlite::Result<()> {
-        store.set_setting(KEY_ENABLED, if self.enabled { "1" } else { "0" })?;
+        let flag = |b: bool| if b { "1" } else { "0" };
+        store.set_setting(KEY_ENABLED, flag(self.enabled))?;
         store.set_setting(KEY_RETENTION, &self.retention_days.to_string())?;
-        store.set_setting(KEY_CLEAR, if self.clear_sensitive { "1" } else { "0" })?;
+        store.set_setting(KEY_CLEAR, flag(self.clear_sensitive))?;
+        store.set_setting(KEY_IMAGES, flag(self.include_images))?;
         store.set_setting(KEY_IGNORED, &self.ignored_apps.join("\n"))
     }
 
@@ -144,11 +158,30 @@ impl ClipSettings {
     }
 }
 
+enum Content {
+    Text(Zeroizing<String>),
+    /// The full image is an encrypted file on disk; only its thumbnail is in memory.
+    Image { meta: ImageMeta, thumb_png: Vec<u8> },
+}
+
 struct Item {
     id: i64,
-    text: Zeroizing<String>,
+    content: Content,
     source: Option<String>,
     created: i64,
+}
+
+impl Item {
+    fn is_text(&self, text: &str) -> bool {
+        matches!(&self.content, Content::Text(t) if **t == *text)
+    }
+
+    fn image_hash(&self) -> Option<u64> {
+        match &self.content {
+            Content::Image { meta, .. } => Some(meta.hash),
+            Content::Text(_) => None,
+        }
+    }
 }
 
 struct Inner {
@@ -174,6 +207,29 @@ impl Inner {
 
 pub struct ClipState {
     inner: Mutex<Inner>,
+    /// Encrypted image files, one per image item.
+    images_dir: PathBuf,
+}
+
+impl ClipState {
+    fn image_path(&self, id: i64) -> PathBuf {
+        self.images_dir.join(format!("{id}.png.enc"))
+    }
+
+    fn delete_image_file(&self, id: i64) {
+        let _ = std::fs::remove_file(self.image_path(id));
+    }
+
+    fn delete_all_image_files(&self) {
+        let _ = std::fs::remove_dir_all(&self.images_dir);
+        let _ = std::fs::create_dir_all(&self.images_dir);
+    }
+
+    /// Decrypt an image item's PNG from disk.
+    fn read_image(&self, id: i64) -> Result<Zeroizing<Vec<u8>>, String> {
+        let cipher = std::fs::read(self.image_path(id)).map_err(|_| "That image is no longer available")?;
+        crypto::unprotect_bytes(&cipher)
+    }
 }
 
 static APP: OnceLock<AppHandle> = OnceLock::new();
@@ -182,12 +238,14 @@ static MONITOR_HWND: AtomicIsize = AtomicIsize::new(0);
 /// Load settings and (if enabled) the saved history, then start watching the clipboard.
 pub fn init(app: &AppHandle) {
     let state = app.state::<AppState>();
+    let images_dir = state.data_dir.join("clipboard");
+    let _ = std::fs::create_dir_all(&images_dir);
     let store = state.store.lock().unwrap();
     let settings = ClipSettings::load(&store);
-    let items = if settings.enabled { load_items(&store) } else { Vec::new() };
+    let items = if settings.enabled { load_items(&store, &images_dir) } else { Vec::new() };
     drop(store);
 
-    app.manage(ClipState { inner: Mutex::new(Inner { settings, items, paused: None }) });
+    app.manage(ClipState { inner: Mutex::new(Inner { settings, items, paused: None }), images_dir });
     let _ = APP.set(app.clone());
     std::thread::Builder::new()
         .name("fyn-clipboard".into())
@@ -196,14 +254,25 @@ pub fn init(app: &AppHandle) {
 }
 
 /// Decrypt the saved history. Rows that can't be decrypted (e.g. another Windows user's)
-/// are deleted.
-fn load_items(store: &Store) -> Vec<Item> {
+/// or whose image file is gone are deleted.
+fn load_items(store: &Store, images_dir: &Path) -> Vec<Item> {
     let mut items = Vec::new();
-    for (id, created, source, data) in store.clip_all() {
-        match crypto::unprotect(&data) {
-            Ok(text) => items.push(Item { id, text, source, created }),
-            Err(_) => {
-                let _ = store.clip_delete(id);
+    for row in store.clip_all() {
+        let content = match row.image {
+            None => crypto::unprotect(&row.data).ok().map(Content::Text),
+            Some(meta) => {
+                let file_exists = images_dir.join(format!("{}.png.enc", row.id)).exists();
+                crypto::unprotect_bytes(&row.data)
+                    .ok()
+                    .filter(|_| file_exists)
+                    .map(|thumb| Content::Image { meta, thumb_png: thumb.to_vec() })
+            }
+        };
+        match content {
+            Some(content) => items.push(Item { id: row.id, content, source: row.source, created: row.created }),
+            None => {
+                let _ = store.clip_delete(row.id);
+                let _ = std::fs::remove_file(images_dir.join(format!("{}.png.enc", row.id)));
             }
         }
     }
@@ -274,26 +343,26 @@ fn on_clipboard_change(app: &AppHandle, hwnd: HWND) {
     if source.as_ref().is_some_and(|s| settings.ignored_apps.contains(s)) {
         return;
     }
-    // `text` is wiped when it goes out of scope, whichever branch runs.
-    let text = match win::read(hwnd) {
-        Ok(win::Read::Text(text)) => text,
-        _ => return, // excluded by the copying app, not text, or the clipboard was busy
-    };
 
-    match classify::classify(&text) {
-        Class::Normal => {
-            if add_item(app, &text, source, &settings).is_ok() {
-                let _ = app.emit(EVT_CHANGED, ());
+    let changed = match win::read(hwnd, settings.include_images) {
+        // `text` is wiped when it goes out of scope, whichever branch runs.
+        Ok(win::Read::Text(text)) => match classify::classify(&text) {
+            Class::Normal => add_text(app, &text, source, &settings).is_ok(),
+            // Looks like a password: never kept, anywhere. Optionally take it off the
+            // clipboard too, a minute from now, if nothing else has been copied by then.
+            Class::Sensitive => {
+                if settings.clear_sensitive {
+                    clear_later(seq);
+                }
+                false
             }
-        }
-        // Looks like a password: never kept, anywhere. Optionally take it off the
-        // clipboard too, a minute from now, if nothing else has been copied by then.
-        Class::Sensitive => {
-            if settings.clear_sensitive {
-                clear_later(seq);
-            }
-        }
-        Class::Never(_) => {}
+            Class::Never(_) => false,
+        },
+        Ok(win::Read::Image { image, png }) => add_image(app, &image, png, source, &settings).is_ok(),
+        _ => false, // excluded by the copying app, nothing usable, or the clipboard was busy
+    };
+    if changed {
+        let _ = app.emit(EVT_CHANGED, ());
     }
 }
 
@@ -306,27 +375,83 @@ fn clear_later(seq: u32) {
     });
 }
 
-/// Save an item (encrypted), moving an identical older one to the top.
-fn add_item(app: &AppHandle, text: &str, source: Option<String>, settings: &ClipSettings) -> Result<(), String> {
+/// Save a text item (encrypted), moving an identical older one to the top.
+fn add_text(app: &AppHandle, text: &str, source: Option<String>, settings: &ClipSettings) -> Result<(), String> {
     let clip = app.state::<ClipState>();
     let state = app.state::<AppState>();
     let mut inner = clip.inner.lock().unwrap();
     let store = state.store.lock().unwrap();
 
-    let created = now();
     let data = crypto::protect(text)?;
-    for old in inner.items.iter().filter(|i| *i.text == text) {
-        let _ = store.clip_delete(old.id);
-    }
-    inner.items.retain(|i| *i.text != text);
-    let id = store.clip_insert(created, source.as_deref(), &data).map_err(|e| e.to_string())?;
-    inner.items.insert(0, Item { id, text: Zeroizing::new(text.to_string()), source, created });
-
-    let cutoff = created - i64::from(settings.retention_days) * 86_400;
-    let _ = store.clip_prune(cutoff, MAX_ITEMS);
-    inner.items.retain(|i| i.created >= cutoff);
-    inner.items.truncate(MAX_ITEMS);
+    let old: Vec<i64> = inner.items.iter().filter(|i| i.is_text(text)).map(|i| i.id).collect();
+    remove_items(&clip, &mut inner, &store, &old);
+    let row = ClipRow { id: 0, created: now(), source, data, image: None };
+    let id = store.clip_insert(&row).map_err(|e| e.to_string())?;
+    inner.items.insert(0, Item { id, content: Content::Text(Zeroizing::new(text.to_string())), source: row.source, created: row.created });
+    prune(&clip, &mut inner, &store, settings);
     Ok(())
+}
+
+/// Save an image: the PNG as an encrypted file, an encrypted thumbnail in the database.
+/// The same image copied again moves to the top instead of being stored twice.
+fn add_image(
+    app: &AppHandle,
+    img: &Rgba,
+    png: Option<Vec<u8>>,
+    source: Option<String>,
+    settings: &ClipSettings,
+) -> Result<(), String> {
+    let png = match png {
+        Some(png) => png,
+        None => image::encode_png(img)?,
+    };
+    if png.len() > image::MAX_PNG_BYTES {
+        return Err("Image too large to keep".into());
+    }
+    let meta = ImageMeta { width: img.width, height: img.height, bytes: png.len() as u64, hash: crate::win::fnv1a(&[&png]) };
+    let thumb_png = image::encode_png(&image::thumbnail(img, image::THUMB_SIZE))?;
+    let file = crypto::protect_bytes(&png)?;
+    let data = crypto::protect_bytes(&thumb_png)?;
+
+    let clip = app.state::<ClipState>();
+    let state = app.state::<AppState>();
+    let mut inner = clip.inner.lock().unwrap();
+    let store = state.store.lock().unwrap();
+
+    let old: Vec<i64> = inner.items.iter().filter(|i| i.image_hash() == Some(meta.hash)).map(|i| i.id).collect();
+    remove_items(&clip, &mut inner, &store, &old);
+    let row = ClipRow { id: 0, created: now(), source, data, image: Some(meta) };
+    let id = store.clip_insert(&row).map_err(|e| e.to_string())?;
+    if let Err(e) = write_atomic(&clip.image_path(id), &file) {
+        let _ = store.clip_delete(id);
+        return Err(format!("Couldn't save image: {e}"));
+    }
+    inner.items.insert(0, Item { id, content: Content::Image { meta, thumb_png }, source: row.source, created: row.created });
+    prune(&clip, &mut inner, &store, settings);
+    Ok(())
+}
+
+/// Write via a temporary file so a crash never leaves a half-written image.
+fn write_atomic(path: &Path, bytes: &[u8]) -> std::io::Result<()> {
+    let tmp = path.with_extension("tmp");
+    std::fs::write(&tmp, bytes)?;
+    std::fs::rename(&tmp, path)
+}
+
+/// Remove items (rows, image files and memory).
+fn remove_items(clip: &ClipState, inner: &mut Inner, store: &Store, ids: &[i64]) {
+    for &id in ids {
+        let _ = store.clip_delete(id);
+        clip.delete_image_file(id);
+    }
+    inner.items.retain(|i| !ids.contains(&i.id));
+}
+
+/// Apply retention: age, total count and image count.
+fn prune(clip: &ClipState, inner: &mut Inner, store: &Store, settings: &ClipSettings) {
+    let cutoff = now() - i64::from(settings.retention_days) * 86_400;
+    let removed = store.clip_prune(cutoff, MAX_ITEMS, MAX_IMAGES).unwrap_or_default();
+    remove_items(clip, inner, store, &removed);
 }
 
 // ---------- commands ----------
@@ -335,11 +460,20 @@ fn add_item(app: &AppHandle, text: &str, source: Option<String>, settings: &Clip
 #[serde(rename_all = "camelCase")]
 pub struct ClipEntry {
     id: i64,
+    /// "text" or "image".
+    kind: &'static str,
+    /// The text; empty for images.
     text: String,
     truncated: bool,
     chars: usize,
     source: Option<String>,
     created: i64,
+    width: Option<u32>,
+    height: Option<u32>,
+    /// Image size on disk (PNG), in bytes.
+    bytes: Option<u64>,
+    /// Small preview of an image, as a data: URL.
+    thumb: Option<String>,
 }
 
 #[derive(Serialize)]
@@ -350,6 +484,9 @@ pub struct ClipStatus {
     paused: bool,
     /// Unix seconds when a timed pause ends.
     paused_until: Option<i64>,
+    image_count: usize,
+    /// Space used by saved images, in bytes.
+    image_bytes: u64,
 }
 
 fn status(inner: &mut Inner) -> ClipStatus {
@@ -358,7 +495,12 @@ fn status(inner: &mut Inner) -> ClipStatus {
         Some(Some(until)) => Some(now() + until.saturating_duration_since(Instant::now()).as_secs() as i64),
         _ => None,
     };
-    ClipStatus { settings: inner.settings.clone(), paused, paused_until }
+    let images = inner.items.iter().filter_map(|i| match &i.content {
+        Content::Image { meta, .. } => Some(meta.bytes),
+        Content::Text(_) => None,
+    });
+    let (image_count, image_bytes) = images.fold((0, 0), |(n, b), bytes| (n + 1, b + bytes));
+    ClipStatus { settings: inner.settings.clone(), paused, paused_until, image_count, image_bytes }
 }
 
 #[tauri::command]
@@ -366,7 +508,8 @@ pub fn clipboard_status(clip: State<ClipState>) -> ClipStatus {
     status(&mut clip.inner.lock().unwrap())
 }
 
-/// Change settings. Turning history off deletes everything it kept.
+/// Change settings. Turning history off deletes everything it kept; turning images off
+/// deletes the saved images.
 #[tauri::command]
 pub fn set_clipboard_settings(
     app: AppHandle,
@@ -382,10 +525,13 @@ pub fn set_clipboard_settings(
         inner.items.clear();
         inner.paused = None;
         store.clip_delete_all().map_err(|e| e.to_string())?;
-    } else if settings.retention_days < inner.settings.retention_days {
-        let cutoff = now() - i64::from(settings.retention_days) * 86_400;
-        let _ = store.clip_prune(cutoff, MAX_ITEMS);
-        inner.items.retain(|i| i.created >= cutoff);
+        clip.delete_all_image_files();
+    } else {
+        if !settings.include_images {
+            let images: Vec<i64> = inner.items.iter().filter(|i| i.image_hash().is_some()).map(|i| i.id).collect();
+            remove_items(&clip, &mut inner, &store, &images);
+        }
+        prune(&clip, &mut inner, &store, &settings);
     }
     inner.settings = settings;
     let result = status(&mut inner);
@@ -401,21 +547,51 @@ pub fn clipboard_list(clip: State<ClipState>) -> Vec<ClipEntry> {
         .items
         .iter()
         .map(|i| {
-            let chars = i.text.chars().count();
-            ClipEntry {
+            let base = ClipEntry {
                 id: i.id,
-                text: i.text.chars().take(MAX_UI_CHARS).collect(),
-                truncated: chars > MAX_UI_CHARS,
-                chars,
+                kind: "text",
+                text: String::new(),
+                truncated: false,
+                chars: 0,
                 source: i.source.clone(),
                 created: i.created,
+                width: None,
+                height: None,
+                bytes: None,
+                thumb: None,
+            };
+            match &i.content {
+                Content::Text(text) => {
+                    let chars = text.chars().count();
+                    ClipEntry {
+                        text: text.chars().take(MAX_UI_CHARS).collect(),
+                        truncated: chars > MAX_UI_CHARS,
+                        chars,
+                        ..base
+                    }
+                }
+                Content::Image { meta, thumb_png } => ClipEntry {
+                    kind: "image",
+                    width: Some(meta.width),
+                    height: Some(meta.height),
+                    bytes: Some(meta.bytes),
+                    thumb: Some(image::png_data_url(thumb_png)),
+                    ..base
+                },
             }
         })
         .collect()
 }
 
+/// The full image of an image item, as a data: URL (decrypted on demand, not kept).
+#[tauri::command(async)]
+pub fn clipboard_image(clip: State<ClipState>, id: i64) -> Result<String, String> {
+    let png = clip.read_image(id)?;
+    Ok(image::png_data_url(&png))
+}
+
 /// Copy an item back onto the clipboard (and to the top of the history).
-#[tauri::command]
+#[tauri::command(async)]
 pub fn clipboard_copy(app: AppHandle, id: i64) -> Result<(), String> {
     put_back(&app, id)
 }
@@ -435,10 +611,24 @@ fn put_back(app: &AppHandle, id: i64) -> Result<(), String> {
     let (text, source, settings) = {
         let inner = clip.inner.lock().unwrap();
         let item = inner.items.iter().find(|i| i.id == id).ok_or("That item is no longer in the history")?;
-        (Zeroizing::new(item.text.to_string()), item.source.clone(), inner.settings.clone())
+        let text = match &item.content {
+            Content::Text(t) => Some(Zeroizing::new(t.to_string())),
+            Content::Image { .. } => None,
+        };
+        (text, item.source.clone(), inner.settings.clone())
     };
-    win::write(&text)?;
-    add_item(app, &text, source, &settings)?; // moves it to the top
+    match text {
+        Some(text) => {
+            win::write(&text)?;
+            add_text(app, &text, source, &settings)?; // moves it to the top
+        }
+        None => {
+            let png = clip.read_image(id)?;
+            let img = image::decode_png(&png).ok_or("That image is damaged")?;
+            win::write_image(&png, &img)?;
+            add_image(app, &img, Some(png.to_vec()), source, &settings)?; // moves it to the top
+        }
+    }
     let _ = app.emit(EVT_CHANGED, ());
     Ok(())
 }
@@ -446,8 +636,7 @@ fn put_back(app: &AppHandle, id: i64) -> Result<(), String> {
 #[tauri::command]
 pub fn clipboard_delete(app: AppHandle, clip: State<ClipState>, state: State<AppState>, id: i64) -> Result<(), String> {
     let mut inner = clip.inner.lock().unwrap();
-    inner.items.retain(|i| i.id != id);
-    state.store.lock().unwrap().clip_delete(id).map_err(|e| e.to_string())?;
+    remove_items(&clip, &mut inner, &state.store.lock().unwrap(), &[id]);
     drop(inner);
     let _ = app.emit(EVT_CHANGED, ());
     Ok(())
@@ -458,6 +647,7 @@ pub fn clipboard_clear(app: AppHandle, clip: State<ClipState>, state: State<AppS
     let mut inner = clip.inner.lock().unwrap();
     inner.items.clear();
     state.store.lock().unwrap().clip_delete_all().map_err(|e| e.to_string())?;
+    clip.delete_all_image_files();
     drop(inner);
     let _ = app.emit(EVT_CHANGED, ());
     Ok(())
@@ -482,12 +672,12 @@ pub fn clipboard_pause(app: AppHandle, clip: State<ClipState>, minutes: Option<u
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::Path;
 
     #[test]
-    fn settings_default_to_off_with_password_managers_ignored() {
+    fn settings_default_to_off_without_images_and_with_password_managers_ignored() {
         let s = ClipSettings::default();
         assert!(!s.enabled);
+        assert!(!s.include_images);
         assert_eq!(s.retention_days, 7);
         assert!(s.clear_sensitive);
         assert!(s.ignored_apps.contains(&"keepassxc.exe".to_string()));
@@ -502,6 +692,7 @@ mod tests {
             enabled: true,
             retention_days: 30,
             clear_sensitive: false,
+            include_images: true,
             ignored_apps: vec!["mybank.exe".into()],
         };
         custom.save(&store).unwrap();
@@ -540,5 +731,30 @@ mod tests {
         assert!(inner.is_paused(), "an open-ended pause holds");
         inner.paused = Some(Some(Instant::now() + Duration::from_secs(60)));
         assert!(inner.is_paused(), "a pause that hasn't elapsed holds");
+    }
+
+    #[test]
+    fn saved_items_load_back_and_orphans_are_cleaned_up() {
+        let dir = std::env::temp_dir().join(format!("fyn-clip-load-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        let store = Store::open(Path::new(":memory:")).unwrap();
+
+        let text = ClipRow { id: 0, created: 1, source: None, data: crypto::protect("hello").unwrap(), image: None };
+        store.clip_insert(&text).unwrap();
+        let meta = ImageMeta { width: 2, height: 2, bytes: 10, hash: 42 };
+        let thumb = crypto::protect_bytes(b"thumb-png").unwrap();
+        let kept = store.clip_insert(&ClipRow { id: 0, created: 2, source: None, data: thumb.clone(), image: Some(meta) }).unwrap();
+        std::fs::write(dir.join(format!("{kept}.png.enc")), b"x").unwrap();
+        // An image row whose file is missing, and a row that can't be decrypted.
+        store.clip_insert(&ClipRow { id: 0, created: 3, source: None, data: thumb, image: Some(meta) }).unwrap();
+        store.clip_insert(&ClipRow { id: 0, created: 4, source: None, data: b"garbage".to_vec(), image: None }).unwrap();
+
+        let items = load_items(&store, &dir);
+        assert_eq!(items.len(), 2);
+        assert!(matches!(&items[0].content, Content::Image { thumb_png, .. } if thumb_png == b"thumb-png"));
+        assert!(items[1].is_text("hello"));
+        assert_eq!(store.clip_all().len(), 2, "broken rows are deleted");
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }

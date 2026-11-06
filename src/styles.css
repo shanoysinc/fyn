@@ -1444,3 +1444,46 @@ img.app-icon--loaded {
   border-style: solid;
   border-color: var(--accent);
 }
+
+/* Clipboard images: thumbnail in the list, full image in the preview. */
+.clip__thumb {
+  width: 24px;
+  height: 24px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  object-fit: cover;
+  background: repeating-conic-gradient(var(--kbd-bg) 0 25%, transparent 0 50%) 0 0 / 8px 8px;
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.clip__image {
+  flex: 1;
+  min-height: 0;
+  display: grid;
+  place-items: center;
+  border-radius: 8px;
+  /* checkerboard so transparent images are visible */
+  background: repeating-conic-gradient(var(--kbd-bg) 0 25%, transparent 0 50%) 0 0 / 16px 16px;
+  overflow: hidden;
+}
+
+.clip__image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+  image-rendering: auto;
+}
+
+/* Quiet footer link, e.g. "Images are off · Turn on" in clipboard history. */
+.footer__hint-btn {
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 6px;
+  font-size: 12px;
+  color: var(--text-3);
+}
+
+.footer__hint-btn:hover {
+  background: var(--hover);
+  color: var(--accent);
+}

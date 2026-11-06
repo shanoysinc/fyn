@@ -49,6 +49,8 @@ export interface ClipSettings {
   retentionDays: 1 | 7 | 30;
   /** Clear the clipboard a minute after a password-like copy (which is never stored). */
   clearSensitive: boolean;
+  /** Keep copied images too (off by default: text checks can't see inside a picture). */
+  includeImages: boolean;
   /** App file names (e.g. "keepassxc.exe") whose copies are never recorded. */
   ignoredApps: string[];
 }
@@ -57,10 +59,15 @@ export interface ClipStatus extends ClipSettings {
   paused: boolean;
   /** Unix seconds when a timed pause ends; null if open-ended or not paused. */
   pausedUntil: number | null;
+  imageCount: number;
+  /** Space used by saved images, in bytes. */
+  imageBytes: number;
 }
 
 export interface ClipEntry {
+  kind: "text" | "image";
   id: number;
+  /** The text; empty for images. */
   text: string;
   truncated: boolean;
   chars: number;
@@ -68,6 +75,12 @@ export interface ClipEntry {
   source: string | null;
   /** Unix seconds. */
   created: number;
+  width: number | null;
+  height: number | null;
+  /** Image size on disk, in bytes. */
+  bytes: number | null;
+  /** Small preview of an image (data: URL). */
+  thumb: string | null;
 }
 
 export interface UpdateInfo {
@@ -117,6 +130,8 @@ export const api = {
   clipboardStatus: () => invoke<ClipStatus>("clipboard_status"),
   setClipboardSettings: (settings: ClipSettings) => invoke<ClipStatus>("set_clipboard_settings", { settings }),
   clipboardList: () => invoke<ClipEntry[]>("clipboard_list"),
+  /** Full image of an image item, as a data: URL (decrypted on demand). */
+  clipboardImage: (id: number) => invoke<string>("clipboard_image", { id }),
   clipboardCopy: (id: number) => invoke<void>("clipboard_copy", { id }),
   /** Hides Fyn and pastes into the app that was in front. */
   clipboardPaste: (id: number) => invoke<void>("clipboard_paste", { id }),

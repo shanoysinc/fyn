@@ -2,6 +2,7 @@ import { Command } from "cmdk";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { parseColor, toHex } from "../lib/color";
 import { asUrl } from "../lib/entries";
+import { formatBytes, relativeTime } from "../lib/format";
 import { api, errorMessage, events, on, type ClipEntry, type ClipStatus } from "../lib/ipc";
 import { ActionPanel, type PanelAction } from "./ActionPanel";
 import { Glyph } from "./EntryIconView";
@@ -16,17 +17,18 @@ interface Toast {
 /** "keepassxc.exe" -> "keepassxc" */
 const appName = (exe: string | null) => (exe ? exe.replace(/\.exe$/i, "") : null);
 
-export function relativeTime(unixSeconds: number, now = Date.now() / 1000): string {
-  const s = Math.max(0, Math.round(now - unixSeconds));
-  if (s < 45) return "Just now";
-  if (s < 3600) return `${Math.max(1, Math.round(s / 60))}m ago`;
-  if (s < 86_400) return `${Math.round(s / 3600)}h ago`;
-  const days = Math.round(s / 86_400);
-  return days === 1 ? "Yesterday" : `${days}d ago`;
+/** What an item is, for its icon. */
+/** Words that find images in search (they have no text of their own). */
+const IMAGE_WORDS = ["image", "screenshot", "picture", "photo", "png"];
+
+/** One-line label for the list. */
+function label(entry: ClipEntry): string {
+  if (entry.kind === "image") return `Image · ${entry.width} × ${entry.height}`;
+  return entry.text.trim().split("\n")[0];
 }
 
-/** What an item is, for its icon. */
-function kindOf(entry: ClipEntry): "link" | "color" | "text" {
+function kindOf(entry: ClipEntry): "image" | "link" | "color" | "text" {
+  if (entry.kind === "image") return "image";
   const t = entry.text.trim();
   if (/^(#|rgba?\(|hsla?\()/i.test(t) && parseColor(t)) return "color";
   if (!/\s/.test(t) && asUrl(t)) return "link";
@@ -35,6 +37,9 @@ function kindOf(entry: ClipEntry): "link" | "color" | "text" {
 
 function ClipIcon({ entry }: { entry: ClipEntry }) {
   const kind = kindOf(entry);
+  if (kind === "image") {
+    return <img className="clip__thumb" src={entry.thumb ?? undefined} alt="" draggable={false} />;
+  }
   if (kind === "color") {
     return <span className="glyph-tile glyph-tile--swatch" style={{ background: toHex(parseColor(entry.text.trim())!) }} />;
   }
@@ -83,7 +88,12 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
   const visible = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (!q) return items;
-    return items.filter((i) => i.text.toLowerCase().includes(q) || appName(i.source)?.toLowerCase().includes(q));
+    return items.filter(
+      (i) =>
+        i.text.toLowerCase().includes(q) ||
+        appName(i.source)?.toLowerCase().includes(q) ||
+        (i.kind === "image" && IMAGE_WORDS.some((w) => w.startsWith(q))),
+    );
   }, [items, query]);
 
   // Keep the selection on an item that exists.
@@ -99,6 +109,17 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
   }, [confirmClear]);
 
   const current = visible.find((i) => String(i.id) === selected) ?? null;
+
+  // Full-size images are decrypted only when one is selected, and cached for the visit.
+  const [fullImages, setFullImages] = useState<Record<number, string>>({});
+  useEffect(() => {
+    if (current?.kind !== "image" || fullImages[current.id]) return;
+    const id = current.id;
+    api
+      .clipboardImage(id)
+      .then((url) => setFullImages((m) => ({ ...m, [id]: url })))
+      .catch(showError);
+  }, [current, fullImages, showError]);
 
   const run = useCallback(
     async (action: string, entry: ClipEntry | null = current) => {
@@ -133,6 +154,12 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
             setStatus(await api.clipboardPause(null));
             setToast({ text: "Recording copies again" });
             break;
+          case "images-on":
+            if (status) {
+              setStatus(await api.setClipboardSettings({ ...status, includeImages: true }));
+              setToast({ text: "Images you copy are kept from now on" });
+            }
+            break;
           case "clear":
             if (!confirmClear) {
               setConfirmClear(true);
@@ -148,7 +175,7 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
         showError(e);
       }
     },
-    [confirmClear, current, showError],
+    [confirmClear, current, showError, status],
   );
 
   const actions: PanelAction[] = useMemo(() => {
@@ -162,9 +189,10 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
     }
     if (status?.paused) list.push({ id: "resume", title: "Resume Recording" });
     else list.push({ id: "pause", title: "Pause for 15 Minutes" }, { id: "pause-forever", title: "Pause Until Resumed" });
+    if (status && !status.includeImages) list.push({ id: "images-on", title: "Turn On Images" });
     list.push({ id: "clear", title: confirmClear ? "Press Again to Clear All" : "Clear All History…" });
     return list;
-  }, [confirmClear, current, status?.paused]);
+  }, [confirmClear, current, status]);
 
   const onKeyDown = (e: React.KeyboardEvent) => {
     const ctrl = e.ctrlKey || e.metaKey;
@@ -219,7 +247,9 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
           <Command.List className="list clip__list">
             {items.length === 0 ? (
               <div className="empty">
-                {status.paused ? "Paused. New copies aren't recorded." : "Nothing yet. Copy some text and it shows up here."}
+                {status.paused ? "Paused. New copies aren't recorded." : status.includeImages
+                    ? "Nothing yet. Copy some text or an image and it shows up here."
+                    : "Nothing yet. Copy some text and it shows up here."}
               </div>
             ) : (
               <Command.Empty className="empty">No matches for “{query}”</Command.Empty>
@@ -232,7 +262,7 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
                 onSelect={() => void run("paste", entry)}
               >
                 <ClipIcon entry={entry} />
-                <span className="row__name">{entry.text.trim().split("\n")[0]}</span>
+                <span className="row__name">{label(entry)}</span>
                 <span className="clip__time">{relativeTime(entry.created, now)}</span>
               </Command.Item>
             ))}
@@ -241,10 +271,17 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
           <aside className="clip__preview">
             {current && (
               <>
-                <pre className="clip__text">
-                  {current.text}
-                  {current.truncated ? "\n…" : ""}
-                </pre>
+                {current.kind === "image" ? (
+                  <div className="clip__image">
+                    {/* The thumbnail shows instantly; the full image replaces it once decrypted. */}
+                    <img src={fullImages[current.id] ?? current.thumb ?? undefined} alt="" draggable={false} />
+                  </div>
+                ) : (
+                  <pre className="clip__text">
+                    {current.text}
+                    {current.truncated ? "\n…" : ""}
+                  </pre>
+                )}
                 <dl className="clip__meta">
                   {current.source && (
                     <>
@@ -254,8 +291,21 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
                   )}
                   <dt>Copied</dt>
                   <dd>{relativeTime(current.created, now)}</dd>
-                  <dt>Characters</dt>
-                  <dd>{current.chars.toLocaleString("en-US")}</dd>
+                  {current.kind === "image" ? (
+                    <>
+                      <dt>Dimensions</dt>
+                      <dd>
+                        {current.width} × {current.height}
+                      </dd>
+                      <dt>Size</dt>
+                      <dd>{formatBytes(current.bytes ?? 0)}</dd>
+                    </>
+                  ) : (
+                    <>
+                      <dt>Characters</dt>
+                      <dd>{current.chars.toLocaleString("en-US")}</dd>
+                    </>
+                  )}
                 </dl>
               </>
             )}
@@ -268,11 +318,22 @@ export function ClipboardView({ onBack }: { onBack: () => void }) {
           {toast ? (
             <span className={`toast ${toast.error ? "toast--error" : ""}`}>{toast.text}</span>
           ) : (
-            status.paused && (
-              <button className="pill" onClick={() => void run("resume")} title="Resume recording copies">
-                Paused · Resume
-              </button>
-            )
+            <>
+              {status.paused && (
+                <button className="pill" onClick={() => void run("resume")} title="Resume recording copies">
+                  Paused · Resume
+                </button>
+              )}
+              {!status.paused && !status.includeImages && (
+                <button
+                  className="footer__hint-btn"
+                  onClick={() => void run("images-on")}
+                  title="Also keep screenshots and copied pictures (Settings → Clipboard history)"
+                >
+                  Images are off · Turn on
+                </button>
+              )}
+            </>
           )}
         </div>
         <div className="footer__right">
@@ -356,6 +417,7 @@ function ClipboardIntro({
         <ul className="clip-intro__points">
           <li>Copies from password managers are never recorded.</li>
           <li>Passwords, API keys, tokens and card numbers are never kept, not even for a moment.</li>
+          <li>Images are off unless you turn them on in Settings.</li>
           <li>Pause any time; turning it off deletes everything.</li>
         </ul>
         <div className="clip-intro__actions">

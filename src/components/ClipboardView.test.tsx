@@ -1,9 +1,10 @@
 import { act, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import { makeClip, makeClipStatus, makeSettings } from "../test/fixtures";
+import { TINY_PNG, makeClip, makeClipStatus, makeImageClip, makeSettings } from "../test/fixtures";
 import { api, emit, resetApi } from "../test/mockIpc";
-import { ClipboardView, relativeTime } from "./ClipboardView";
+import { formatBytes, relativeTime } from "../lib/format";
+import { ClipboardView } from "./ClipboardView";
 import { SettingsView } from "./SettingsView";
 
 vi.mock("../lib/ipc", async (orig) => (await import("../test/mockIpc")).mockIpcModule(await orig()));
@@ -204,5 +205,121 @@ describe("clipboard settings", () => {
     const user = await setupSettings();
     await user.type(screen.getByPlaceholderText(/Add app/), "bad{Enter}");
     expect(await screen.findByText(/isn't an app file name/)).toBeInTheDocument();
+  });
+});
+
+describe("images", () => {
+  const SHOT = makeImageClip({ id: 7 });
+
+  beforeEach(() => {
+    api.clipboardStatus.mockResolvedValue(makeClipStatus({ includeImages: true, imageCount: 1, imageBytes: 2_400_000 }));
+    api.clipboardList.mockResolvedValue([SHOT, NOTE]);
+    api.clipboardImage.mockResolvedValue(TINY_PNG + "#full");
+  });
+
+  async function setupImages() {
+    const user = userEvent.setup();
+    render(<ClipboardView onBack={vi.fn()} />);
+    const input = await screen.findByPlaceholderText("Search clipboard history…");
+    await waitFor(() => expect(document.querySelectorAll(".clip__row")).toHaveLength(2));
+    return { user, input };
+  }
+
+  it("shows a thumbnail and the dimensions in the list", async () => {
+    await setupImages();
+    const row = document.querySelectorAll(".clip__row")[0];
+    expect(row).toHaveTextContent("Image · 1920 × 1080");
+    expect(row.querySelector("img.clip__thumb")).toHaveAttribute("src", TINY_PNG);
+  });
+
+  it("loads the full image only when it's selected, with its size", async () => {
+    await setupImages();
+    await waitFor(() => expect(api.clipboardImage).toHaveBeenCalledWith(7));
+    await waitFor(() =>
+      expect(document.querySelector(".clip__image img")).toHaveAttribute("src", TINY_PNG + "#full"),
+    );
+    const meta = document.querySelector(".clip__meta")!;
+    expect(meta).toHaveTextContent("1920 × 1080");
+    expect(meta).toHaveTextContent("2.3 MB");
+    expect(meta).toHaveTextContent("snippingtool");
+    expect(api.clipboardImage).toHaveBeenCalledTimes(1);
+  });
+
+  it("Enter pastes the image", async () => {
+    const { user } = await setupImages();
+    await user.keyboard("{Enter}");
+    expect(api.clipboardPaste).toHaveBeenCalledWith(7);
+  });
+
+  it("images are found by words like 'screenshot' or the app they came from", async () => {
+    const { user, input } = await setupImages();
+    await user.type(input, "screen");
+    await waitFor(() => expect(document.querySelectorAll(".clip__row")).toHaveLength(1));
+    expect(document.querySelector(".clip__row")).toHaveTextContent("Image");
+    await user.clear(input);
+    await user.type(input, "snipping");
+    await waitFor(() => expect(document.querySelectorAll(".clip__row")).toHaveLength(1));
+  });
+
+  it("the empty history mentions images when they're on", async () => {
+    api.clipboardList.mockResolvedValue([]);
+    render(<ClipboardView onBack={vi.fn()} />);
+    expect(await screen.findByText(/Copy some text or an image/)).toBeInTheDocument();
+  });
+});
+
+describe("image settings", () => {
+  it("is off by default and explains what turning it on means", async () => {
+    api.getSettings.mockResolvedValue(makeSettings());
+    const user = userEvent.setup();
+    render(<SettingsView onBack={vi.fn()} onShowWelcome={vi.fn()} update={null} onUpdate={vi.fn()} />);
+    const toggle = await screen.findByRole("switch", { name: "Include images" });
+    expect(toggle).toHaveAttribute("aria-checked", "false");
+    expect(screen.getByText(/a screenshot of a password would be kept/)).toBeInTheDocument();
+    await user.click(toggle);
+    expect(api.setClipboardSettings).toHaveBeenLastCalledWith(expect.objectContaining({ includeImages: true }));
+  });
+
+  it("shows how many images are saved and how much space they use", async () => {
+    api.getSettings.mockResolvedValue(makeSettings());
+    api.clipboardStatus.mockResolvedValue(makeClipStatus({ includeImages: true, imageCount: 12, imageBytes: 19_300_000 }));
+    render(<SettingsView onBack={vi.fn()} onShowWelcome={vi.fn()} update={null} onUpdate={vi.fn()} />);
+    expect(await screen.findByText(/12 saved \(18\.4 MB\)/)).toBeInTheDocument();
+  });
+});
+
+describe("formatBytes", () => {
+  it.each([
+    [512, "512 B"],
+    [1536, "2 KB"],
+    [2_400_000, "2.3 MB"],
+  ])("%i -> %s", (n, s) => expect(formatBytes(n)).toBe(s));
+});
+
+describe("turning images on from clipboard history", () => {
+  it("says images are off and turns them on from the footer", async () => {
+    const user = userEvent.setup();
+    render(<ClipboardView onBack={vi.fn()} />);
+    await user.click(await screen.findByRole("button", { name: /Images are off/ }));
+    expect(api.setClipboardSettings).toHaveBeenCalledWith(expect.objectContaining({ includeImages: true }));
+    await waitFor(() => expect(screen.queryByRole("button", { name: /Images are off/ })).not.toBeInTheDocument());
+  });
+
+  it("offers Turn On Images in the actions menu, only while they're off", async () => {
+    const user = userEvent.setup();
+    render(<ClipboardView onBack={vi.fn()} />);
+    await screen.findByPlaceholderText("Search clipboard history…");
+    await user.keyboard("{Control>}k{/Control}");
+    await user.click(screen.getByText("Turn On Images"));
+    expect(api.setClipboardSettings).toHaveBeenCalledWith(expect.objectContaining({ includeImages: true }));
+    await user.keyboard("{Control>}k{/Control}");
+    expect(screen.queryByText("Turn On Images")).not.toBeInTheDocument();
+  });
+
+  it("doesn't nag once images are on", async () => {
+    api.clipboardStatus.mockResolvedValue(makeClipStatus({ includeImages: true }));
+    render(<ClipboardView onBack={vi.fn()} />);
+    await screen.findByPlaceholderText("Search clipboard history…");
+    expect(screen.queryByRole("button", { name: /Images are off/ })).not.toBeInTheDocument();
   });
 });

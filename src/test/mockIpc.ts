@@ -37,6 +37,7 @@ export const api = {
   clipboardStatus: vi.fn(),
   setClipboardSettings: vi.fn(),
   clipboardList: vi.fn(),
+  clipboardImage: vi.fn(),
   clipboardCopy: vi.fn(),
   clipboardPaste: vi.fn(),
   clipboardDelete: vi.fn(),
@@ -58,7 +59,7 @@ export function resetApi() {
   api.setHotkey.mockImplementation(async (h: string) => h);
   api.clipboardStatus.mockResolvedValue(makeClipStatus());
   api.clipboardList.mockResolvedValue([]);
-  api.setClipboardSettings.mockImplementation(async (s: ClipSettings) => ({ ...s, paused: false, pausedUntil: null }));
+  api.setClipboardSettings.mockImplementation(async (s: ClipSettings) => makeClipStatus({ ...s }));
   api.clipboardPause.mockImplementation(async (m: number | null) => makeClipStatus({ paused: m !== null }));
 }
 

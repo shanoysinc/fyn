@@ -55,21 +55,37 @@ export function makeClipStatus(over: Partial<ClipStatus> = {}): ClipStatus {
     enabled: true,
     retentionDays: 7,
     clearSensitive: true,
+    includeImages: false,
     ignoredApps: ["keepassxc.exe", "1password.exe"],
     paused: false,
     pausedUntil: null,
+    imageCount: 0,
+    imageBytes: 0,
     ...over,
   };
 }
 
 export function makeClip(over: Partial<ClipEntry> = {}): ClipEntry {
   return {
+    kind: "text",
     id: 1,
     text: "hello world",
     truncated: false,
     chars: 11,
     source: "code.exe",
     created: Math.floor(Date.now() / 1000) - 120,
+    width: null,
+    height: null,
+    bytes: null,
+    thumb: null,
     ...over,
   };
+}
+
+/** A 1×1 transparent PNG, as clipboard history sends images to the UI. */
+export const TINY_PNG =
+  "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+export function makeImageClip(over: Partial<ClipEntry> = {}): ClipEntry {
+  return makeClip({ kind: "image", text: "", chars: 0, width: 1920, height: 1080, bytes: 2_400_000, thumb: TINY_PNG, source: "snippingtool.exe", ...over });
 }
